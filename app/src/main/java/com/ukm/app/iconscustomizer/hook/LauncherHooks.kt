@@ -63,6 +63,9 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
         if (bool(Prefs.HIDE_LABELS)) safeHook("hideLabels") {
             returnConstant(cl, listOf("com.miui.home.launcher.ShortcutIcon"), "getIsHideTitle", true)
             returnConstant(cl, deviceConfigs, "isHideAppTitle", true)
+            // HyperOS 2: ShortcutIcon reads its mIsHideTitle field directly, so the getter alone
+            // does nothing. Use the launcher's native "no word" (hide app names) mode instead.
+            returnConstant(cl, listOf("com.miui.home.launcher.common.Utilities"), "isNoWordModel", true)
         }
         if (bool(Prefs.HIDE_DOCK_LABELS)) safeHook("hideDockLabels") {
             returnConstant(cl, deviceConfigs, "isHotseatsAppTitleHided", true)
@@ -114,6 +117,9 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
             returnConstant(cl, deviceLevelUtils, "supportSetAnimationRate", true)
             returnConstant(cl, deviceLevelUtils, "isHighLevelDevice", true)
             returnConstant(cl, deviceLevelUtils, "isLowLevelDevice", false)
+            // HyperOS 2 names
+            returnConstant(cl, deviceLevelUtils, "isHighLevelDeviceFromFolme", true)
+            returnConstant(cl, deviceLevelUtils, "isLowLevelDeviceFromFolme", false)
         }
 
         safeHook("wallpaperColor") { wallpaperColorChangedHook(cl) }
@@ -160,7 +166,8 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
         val cls = findClassAny(
             cl,
             "com.miui.home.common.gridconfig.GridConfig\$IconConfig",
-            "com.miui.home.launcher.gridconfig.GridConfig\$IconConfig"
+            "com.miui.home.launcher.gridconfig.GridConfig\$IconConfig",
+            "com.miui.home.launcher.GridConfig\$IconConfig" // HyperOS 2
         )
         after(XposedHelpers.findMethodExact(cls, "getIconSize")) { _, result ->
             (result as? Int)?.let { (it * scale).toInt() } ?: result
@@ -176,22 +183,32 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
     }
 
     private fun iconPackHook(cl: ClassLoader) {
-        val drawableInfo = XposedHelpers.findClass("com.miui.home.model.core.DrawableInfo", cl)
-        val itemInfoClass = XposedHelpers.findClassIfExists("com.miui.home.model.api.ItemInfoWithIconAndMessage", cl)
+        // HyperOS 3: model.core / model.api — HyperOS 2: launcher.graphics / launcher
+        val drawableInfo = findClassAny(
+            cl,
+            "com.miui.home.model.core.DrawableInfo",
+            "com.miui.home.launcher.graphics.DrawableInfo"
+        )
+        val itemInfoClass = findClassOrNull(
+            cl,
+            "com.miui.home.model.api.ItemInfoWithIconAndMessage",
+            "com.miui.home.launcher.ItemInfoWithIconAndMessage"
+        )
         val applyTo = findMethodLoose(drawableInfo, "applyTo", itemInfoClass ?: Any::class.java)
+        info("iconPack: hooking ${applyTo.declaringClass.name}#${applyTo.name}(${applyTo.parameterTypes.joinToString { it.simpleName }})")
         val homeOnly = bool(Prefs.HOMESCREEN_ONLY)
 
         hook(applyTo) { chain ->
             try {
                 val itemInfo = chain.args[0] ?: return@hook chain.proceed()
-                val iconType = XposedHelpers.callMethod(itemInfo, "getIconType") as? Int
+                val iconType = iconTypeOf(itemInfo)
                 val isHomeItem = itemInfo.javaClass.name == "com.miui.home.launcher.ShortcutInfo"
+                // 8 = "big icon" (large app icon tile) on both HyperOS 2 and 3
                 if ((homeOnly && !isHomeItem) || iconType == 8) return@hook chain.proceed()
 
                 val original = XposedHelpers.getObjectField(chain.thisObject, "icon") as? Drawable
                     ?: return@hook chain.proceed()
-                val component = XposedHelpers.callMethod(itemInfo, "getComponentInfo") as? ComponentName
-                    ?: return@hook chain.proceed()
+                val component = componentOf(itemInfo) ?: return@hook chain.proceed()
                 val custom = customIcon(component, original)
                 val mask = XposedHelpers.getObjectField(chain.thisObject, "enableIconMask")
                 try {
@@ -207,6 +224,31 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
                 chain.proceed()
             }
         }
+    }
+
+    /** HyperOS 3 exposes getIconType(); HyperOS 2 only has the public field mIconType. */
+    private fun iconTypeOf(itemInfo: Any): Int? {
+        try {
+            findMethodByName(itemInfo.javaClass, "getIconType", 0).invoke(itemInfo)?.let { return it as? Int }
+        } catch (_: Throwable) {
+        }
+        return try {
+            XposedHelpers.findField(itemInfo.javaClass, "mIconType").getInt(itemInfo)
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    /** HyperOS 3: getComponentInfo(); HyperOS 2: getTargetComponent() / getComponentName(). */
+    private fun componentOf(itemInfo: Any): ComponentName? {
+        for (name in arrayOf("getComponentInfo", "getTargetComponent", "getComponentName")) {
+            try {
+                val value = findMethodByName(itemInfo.javaClass, name, 0).invoke(itemInfo)
+                if (value is ComponentName) return value
+            } catch (_: Throwable) {
+            }
+        }
+        return null
     }
 
     private fun customIcon(component: ComponentName, original: Drawable): Drawable {
@@ -345,7 +387,11 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
             }
         }
         safeHook("folderAnim") {
-            val anim = findClassAny(cl, "com.miui.home.folder.FolderAnimController")
+            val anim = findClassAny(
+                cl,
+                "com.miui.home.folder.FolderAnimController",
+                "com.miui.home.launcher.folder.FolderAnimController" // HyperOS 2
+            )
             after(findMethodByName(anim, "setupView")) { chain, result ->
                 val self = chain.thisObject ?: return@after result
                 val grid = XposedHelpers.getObjectField(self, "mAnimaFolderGridView") ?: return@after result
