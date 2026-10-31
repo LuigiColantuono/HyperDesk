@@ -13,21 +13,81 @@ import androidx.core.graphics.BlendModeCompat
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.drawable.toDrawable
 import org.xmlpull.v1.XmlPullParser
+import java.util.concurrent.ConcurrentHashMap
 
 object IconPackHelper {
 
     private const val TAG = "UKMTAG"
-    @Volatile
-    private var cachedAppFilterMap: Map<String, String>? = null
-    @Volatile
-    private var currentIconPack: String? = null
+
+    /** Several packs are in use at once when mixing, so every pack keeps its own map. */
+    private val appFilterMaps = ConcurrentHashMap<String, Map<String, String>>()
+    private val matchCache = ConcurrentHashMap<String, String>()
+
+    /** One specific icon inside one specific pack. */
+    data class IconRef(val pack: String, val drawable: String)
+
+    fun parsePackList(csv: String): List<String> =
+        csv.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+
+    /** The packs to search, main pack first, without "none" or duplicates. */
+    fun packChain(primary: String, fallbacksCsv: String): List<String> =
+        (listOf(primary) + parsePackList(fallbacksCsv)).filter { it != "none" }.distinct()
+
+    /**
+     * Per-app overrides stay under the main pack's key. A bare drawable name means "from
+     * that pack" (the format older versions wrote), "pack|drawable" means from another pack.
+     */
+    fun encodeOverride(keyPack: String, ref: IconRef): String =
+        if (ref.pack == keyPack) ref.drawable else "${ref.pack}|${ref.drawable}"
+
+    fun decodeOverride(keyPack: String, value: String): IconRef {
+        val separator = value.indexOf('|')
+        return if (separator < 0) IconRef(keyPack, value)
+        else IconRef(value.substring(0, separator), value.substring(separator + 1))
+    }
+
+    /** The exact activity wins, otherwise any entry of the same app. */
+    fun matchComponent(map: Map<String, String>, packageName: String, className: String): String? {
+        val prefix = "ComponentInfo{$packageName/"
+        return map["$prefix$className}"] ?: map.entries.firstOrNull { it.key.startsWith(prefix) }?.value
+    }
+
+    fun findInPack(context: Context, pack: String, packageName: String, className: String): String? {
+        val key = "$pack|$packageName/$className"
+        matchCache[key]?.let { return it.ifEmpty { null } }
+        val map = getAppFilterMap(context, pack)
+        if (map.isEmpty()) return null
+        val match = matchComponent(map, packageName, className)
+        matchCache[key] = match ?: ""
+        return match
+    }
+
+    /**
+     * Icons for one app, best first: the manual override, then each pack of [chain] in order.
+     * Lazy, so callers stop at the first one that actually loads. That way an override
+     * pointing at an uninstalled pack falls through to the next choice.
+     */
+    fun candidates(
+        context: Context,
+        chain: List<String>,
+        packageName: String,
+        className: String,
+        override: String?,
+    ): Sequence<IconRef> = sequence {
+        val main = chain.firstOrNull() ?: return@sequence
+        if (!override.isNullOrEmpty()) yield(decodeOverride(main, override))
+        for (pack in chain) {
+            findInPack(context, pack, packageName, className)?.let { yield(IconRef(pack, it)) }
+        }
+    }
+
+    fun loadFirst(context: Context, refs: Sequence<IconRef>): Drawable? =
+        refs.firstNotNullOfOrNull { loadIcon(context, it.pack, it.drawable) }
 
     @SuppressLint("QueryPermissionsNeeded", "DiscouragedApi")
     fun getAppFilterMap(context: Context, iconPackPackageName: String): Map<String, String> {
         synchronized(this) {
-            if (iconPackPackageName == currentIconPack && cachedAppFilterMap != null) {
-                return cachedAppFilterMap!!
-            }
+            appFilterMaps[iconPackPackageName]?.let { return it }
 
             val iconMap = mutableMapOf<String, String>()
             try {
@@ -60,8 +120,7 @@ object IconPackHelper {
                     }
                 }
 
-                cachedAppFilterMap = iconMap
-                currentIconPack = iconPackPackageName
+                appFilterMaps[iconPackPackageName] = iconMap
 
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to parse appfilter: ${e.message}")

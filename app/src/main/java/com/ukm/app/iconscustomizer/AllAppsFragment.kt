@@ -28,6 +28,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.ukm.app.iconscustomizer.MainActivity.Companion.PREF_NAME
+import com.ukm.app.iconscustomizer.ui.IconPacks
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -40,7 +41,7 @@ class AllAppsFragment : Fragment(R.layout.fragment_all_apps) {
     private lateinit var iconPackPackage: String
     private lateinit var adapter: AppAdapter
     private var allApps = listOf<AppInfo>()
-    private var appFilterMap: Map<String, String> = emptyMap()
+    private var packChain = listOf<String>()
     private var showThemedIcons = true
 
     private fun getPrefs(): SharedPreferences {
@@ -50,6 +51,7 @@ class AllAppsFragment : Fragment(R.layout.fragment_all_apps) {
     data class AppInfo(
         val name: String,
         val componentString: String,
+        val className: String,
         val stockIcon: Drawable,
         val packageName: String
     )
@@ -107,9 +109,14 @@ class AllAppsFragment : Fragment(R.layout.fragment_all_apps) {
             }
         }, viewLifecycleOwner, Lifecycle.State.RESUMED)
 
+        packChain = IconPackHelper.packChain(
+            iconPackPackage,
+            Prefs.string(getPrefs(), Prefs.ICON_PACK_FALLBACKS)
+        )
         viewLifecycleOwner.lifecycleScope.launch {
-            appFilterMap = withContext(Dispatchers.IO) {
-                IconPackHelper.getAppFilterMap(requireContext(), iconPackPackage)
+            // Parsed off the main thread so that binding rows only ever hits the cache.
+            withContext(Dispatchers.IO) {
+                packChain.forEach { IconPackHelper.getAppFilterMap(requireContext(), it) }
             }
             allApps = withContext(Dispatchers.IO) { loadInstalledApps() }
             adapter.updateData(allApps)
@@ -158,7 +165,7 @@ class AllAppsFragment : Fragment(R.layout.fragment_all_apps) {
             val name = resolveInfo.loadLabel(pm).toString()
             val icon = resolveInfo.loadIcon(pm)
             val componentString = "ComponentInfo{$pkg/$cls}"
-            appsList.add(AppInfo(name, componentString, icon, pkg))
+            appsList.add(AppInfo(name, componentString, cls, icon, pkg))
         }
         return appsList.sortedBy { it.name.lowercase() }
     }
@@ -170,6 +177,8 @@ class AllAppsFragment : Fragment(R.layout.fragment_all_apps) {
 
         private val prefs = getPrefs()
         private val isMonetEnabled = prefs.getBoolean("enable_monet_colors", false)
+        private val isNormalizeEnabled = Prefs.bool(prefs, Prefs.ICON_NORMALIZE)
+        private val normalizeSize = Prefs.int(prefs, Prefs.ICON_NORMALIZE_SIZE)
         private val monetBgColor: Int? =
             if (prefs.getInt("monet_bg_color", 0) != 0) ContextCompat.getColor(
                 adapterContext,
@@ -209,22 +218,22 @@ class AllAppsFragment : Fragment(R.layout.fragment_all_apps) {
                 null
             )
 
-            var targetDrawableName = manualIcon
+            val target = IconPackHelper.candidates(
+                adapterContext,
+                packChain,
+                app.packageName,
+                app.className,
+                manualIcon
+            ).firstOrNull()
 
-            if (targetDrawableName == null) {
-                targetDrawableName = appFilterMap[app.componentString]
-                if (targetDrawableName == null) {
-                    val packagePrefix = "ComponentInfo{${app.packageName}/"
-                    targetDrawableName =
-                        appFilterMap.entries.firstOrNull { it.key.startsWith(packagePrefix) }?.value
-                }
-            }
-
-            if (manualIcon != null) {
-                holder.appAssignedIcon.text = "Custom override: $manualIcon"
+            if (manualIcon != null && target != null) {
+                holder.appAssignedIcon.text = "Custom override: ${target.drawable}"
                 holder.appAssignedIcon.setTextColor("#4CAF50".toColorInt())
-            } else if (targetDrawableName != null) {
+            } else if (target != null && target.pack == iconPackPackage) {
                 holder.appAssignedIcon.text = "Using default pack icon"
+                holder.appAssignedIcon.setTextColor("#888888".toColorInt())
+            } else if (target != null) {
+                holder.appAssignedIcon.text = "From ${IconPacks.label(adapterContext, target.pack)}"
                 holder.appAssignedIcon.setTextColor("#888888".toColorInt())
             } else {
                 holder.appAssignedIcon.text = "Unthemed / Stock"
@@ -235,9 +244,10 @@ class AllAppsFragment : Fragment(R.layout.fragment_all_apps) {
                 holder.appIcon.tag = "stock_${app.componentString}"
                 holder.appIcon.setImageDrawable(app.stockIcon)
             } else {
-                if (targetDrawableName != null) {
-                    holder.appIcon.tag = targetDrawableName
-                    val cachedIcon = memoryCache.get(targetDrawableName)
+                if (target != null) {
+                    val iconKey = "${target.pack}|${target.drawable}"
+                    holder.appIcon.tag = iconKey
+                    val cachedIcon = memoryCache.get(iconKey)
 
                     if (cachedIcon != null) {
                         holder.appIcon.setImageDrawable(cachedIcon)
@@ -248,21 +258,27 @@ class AllAppsFragment : Fragment(R.layout.fragment_all_apps) {
                             val finalDrawable = withContext(Dispatchers.IO) {
                                 val rawDrawable = IconPackHelper.loadIcon(
                                     adapterContext,
-                                    iconPackPackage,
-                                    targetDrawableName
+                                    target.pack,
+                                    target.drawable
                                 )
 
-                                if (rawDrawable != null && isMonetEnabled) {
+                                val colored = if (rawDrawable != null && isMonetEnabled) {
                                     applyCustomizedColorToIcon(rawDrawable)
                                 } else {
                                     rawDrawable
                                 }
+
+                                if (colored != null && isNormalizeEnabled) {
+                                    IconNormalizer.normalize(adapterContext, colored, normalizeSize)
+                                } else {
+                                    colored
+                                }
                             }
 
                             if (finalDrawable != null) {
-                                memoryCache.put(targetDrawableName, finalDrawable)
+                                memoryCache.put(iconKey, finalDrawable)
 
-                                if (holder.appIcon.tag == targetDrawableName) {
+                                if (holder.appIcon.tag == iconKey) {
                                     holder.appIcon.setImageDrawable(finalDrawable)
                                 }
                             }

@@ -67,6 +67,15 @@
     <string name="pref_choose_pack_summary">None</string>
     <string name="pref_icon_packs">Use icon pack</string>
     <string name="pref_icon_packs_summary">Apply the selected third-party icon pack</string>
+    <string name="pref_fallback_packs">Fallback icon packs</string>
+    <string name="pref_fallback_packs_summary">Fill in apps the main pack doesn\'t cover</string>
+    <string name="pref_icon_normalize">Uniform icon size</string>
+    <string name="pref_icon_normalize_summary">Trim each icon\'s empty margin so all packs match</string>
+    <string name="pref_icon_normalize_size">Uniform size</string>
+    <string name="pref_icon_normalize_size_summary">Share of the icon area the artwork fills. 100% matches stock icons best</string>
+    <string name="menu_switch_pack">Change pack</string>
+    <string name="toast_no_other_packs">Install another icon pack to mix it in</string>
+    <string name="action_save">Save</string>
     <string name="pref_homescreen_only">Home screen only</string>
     <string name="pref_homescreen_only_summary">Leave app drawer icons untouched</string>
     <string name="pref_apply_custom">Customize per-app icons</string>

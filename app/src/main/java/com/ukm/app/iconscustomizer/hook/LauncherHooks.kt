@@ -15,22 +15,22 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.GridView
 import com.ukm.app.iconscustomizer.Constants
+import com.ukm.app.iconscustomizer.IconNormalizer
 import com.ukm.app.iconscustomizer.IconPackHelper
 import com.ukm.app.iconscustomizer.Materials
 import com.ukm.app.iconscustomizer.Prefs
 import com.ukm.app.iconscustomizer.XposedHelpers
 import io.github.libxposed.api.XposedModule
 import org.w3c.dom.Element
-import java.util.concurrent.ConcurrentHashMap
 
 /** Hooks for the HyperOS System Launcher (com.miui.home) and the POCO Launcher. */
 class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String) :
     HookModule(module, prefs, pkg) {
 
     private var context: Context? = null
-    private val resolvedCache = ConcurrentHashMap<String, String>()
 
     private val iconPack = string(Prefs.ICON_PACK)
+    private val packChain = IconPackHelper.packChain(iconPack, string(Prefs.ICON_PACK_FALLBACKS))
     private val iconPackActive = bool(Prefs.THEMED_ICONS) && iconPack != "none"
 
     @Volatile private var launcherColorCallbackSeen = false
@@ -255,14 +255,21 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
         val c = context ?: return original
         val exact = "ComponentInfo{${component.packageName}/${component.className}}"
         val manual = try { prefs?.getString("custom_icon_${iconPack}_$exact", null) } catch (_: Exception) { null }
-        val name = if (!manual.isNullOrEmpty()) manual else {
-            val map = IconPackHelper.getAppFilterMap(c, iconPack)
-            if (map.isEmpty()) return original
-            bestMatch(component, map) ?: return original
+        val refs = IconPackHelper.candidates(c, packChain, component.packageName, component.className, manual)
+        val drawable = IconPackHelper.loadFirst(c, refs) ?: return original
+        // Bounds go last: recoloring and normalizing both return a new drawable.
+        return normalized(recolor(drawable)).apply { bounds = original.bounds }
+    }
+
+    private fun normalized(icon: Drawable): Drawable {
+        val c = context
+        if (!bool(Prefs.ICON_NORMALIZE) || c == null) return icon
+        return try {
+            IconNormalizer.normalize(c, icon, int(Prefs.ICON_NORMALIZE_SIZE))
+        } catch (e: Exception) {
+            Log.e(Constants.TAG, "normalize", e)
+            icon
         }
-        val drawable = IconPackHelper.loadIcon(c, iconPack, name) ?: return original
-        drawable.bounds = original.bounds
-        return recolor(drawable)
     }
 
     private fun recolor(icon: Drawable): Drawable {
@@ -276,15 +283,6 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
             Log.e(Constants.TAG, "recolor", e)
             icon
         }
-    }
-
-    private fun bestMatch(component: ComponentName, map: Map<String, String>): String? {
-        val exact = "ComponentInfo{${component.packageName}/${component.className}}"
-        resolvedCache[exact]?.let { return it.ifEmpty { null } }
-        val prefix = "ComponentInfo{${component.packageName}/"
-        val match = map[exact] ?: map.entries.firstOrNull { it.key.startsWith(prefix) }?.value
-        resolvedCache[exact] = match ?: ""
-        return match
     }
 
     // ---------------------------------------------------------------- dock

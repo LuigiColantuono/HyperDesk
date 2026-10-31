@@ -30,6 +30,7 @@ object Catalog {
                 R.string.sec_icon_pack, listOf(
                     ActionItem("pick_icon_pack", R.string.pref_choose_pack, R.string.pref_choose_pack_summary, R.drawable.ic_apps),
                     SwitchItem(Prefs.THEMED_ICONS, R.string.pref_icon_packs, R.string.pref_icon_packs_summary, R.drawable.ic_palette, Scope.LAUNCHER),
+                    ActionItem("pick_fallback_packs", R.string.pref_fallback_packs, R.string.icon_pack_none, R.drawable.ic_widgets, listOf(on(Prefs.THEMED_ICONS))),
                     SwitchItem(Prefs.HOMESCREEN_ONLY, R.string.pref_homescreen_only, R.string.pref_homescreen_only_summary, R.drawable.ic_home, Scope.LAUNCHER, listOf(on(Prefs.THEMED_ICONS))),
                     ActionItem("per_app_icons", R.string.pref_apply_custom, R.string.pref_apply_custom_summary, R.drawable.ic_smartphone, listOf(on(Prefs.THEMED_ICONS))),
                 )
@@ -45,6 +46,8 @@ object Catalog {
                 R.string.sec_icon_look, listOf(
                     PreviewItem(PreviewKind.ICONS),
                     SliderItem(Prefs.ICON_SCALE, R.string.pref_icon_scale, R.drawable.ic_resize, 70, 130, Scope.LAUNCHER, unit = "%", summary = R.string.pref_icon_scale_summary),
+                    SwitchItem(Prefs.ICON_NORMALIZE, R.string.pref_icon_normalize, R.string.pref_icon_normalize_summary, R.drawable.ic_tune, Scope.LAUNCHER, listOf(on(Prefs.THEMED_ICONS))),
+                    SliderItem(Prefs.ICON_NORMALIZE_SIZE, R.string.pref_icon_normalize_size, R.drawable.ic_width, 70, 100, Scope.LAUNCHER, unit = "%", summary = R.string.pref_icon_normalize_size_summary, dependsOn = listOf(on(Prefs.THEMED_ICONS), on(Prefs.ICON_NORMALIZE))),
                     SwitchItem(Prefs.HIDE_SHADOWS, R.string.pref_hide_icon_shadows, R.string.pref_hide_icon_shadows_summary, R.drawable.ic_shadow, Scope.LAUNCHER, beta = true),
                 )
             ),

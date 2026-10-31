@@ -9,12 +9,16 @@ import android.content.SharedPreferences
 object Prefs {
     // Icons
     const val ICON_PACK = "icon_pack"
+    /** Comma-separated pack packages, tried in order for apps the main pack doesn't cover. */
+    const val ICON_PACK_FALLBACKS = "icon_pack_fallbacks"
     const val THEMED_ICONS = "enable_themed_icons"
     const val HOMESCREEN_ONLY = "themed_icons_homescreen_only"
     const val MONET_ICONS = "enable_monet_colors"
     const val MONET_FG = "monet_fg_color"
     const val MONET_BG = "monet_bg_color"
     const val ICON_SCALE = "icon_scale"
+    const val ICON_NORMALIZE = "icon_normalize"
+    const val ICON_NORMALIZE_SIZE = "icon_normalize_size"
     const val HIDE_SHADOWS = "hide_icon_shadows"
 
     // Labels
@@ -78,12 +82,15 @@ object Prefs {
 
     val DEFAULTS: Map<String, Any> = mapOf(
         ICON_PACK to "none",
+        ICON_PACK_FALLBACKS to "",
         THEMED_ICONS to false,
         HOMESCREEN_ONLY to false,
         MONET_ICONS to false,
         MONET_FG to 0,
         MONET_BG to 0,
         ICON_SCALE to 100,
+        ICON_NORMALIZE to false,
+        ICON_NORMALIZE_SIZE to 90,
         HIDE_SHADOWS to false,
         HIDE_LABELS to false,
         HIDE_DOCK_LABELS to false,

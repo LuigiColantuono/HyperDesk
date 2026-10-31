@@ -308,6 +308,15 @@ class SettingsRenderer(
             if (item.id == "pick_icon_pack") {
                 summary.text = IconPacks.label(context, PrefStore.string(com.ukm.app.iconscustomizer.Prefs.ICON_PACK))
             }
+            if (item.id == "pick_fallback_packs") {
+                val main = PrefStore.string(com.ukm.app.iconscustomizer.Prefs.ICON_PACK)
+                val extras = com.ukm.app.iconscustomizer.IconPackHelper.packChain(
+                    main,
+                    PrefStore.string(com.ukm.app.iconscustomizer.Prefs.ICON_PACK_FALLBACKS)
+                ).filter { it != main }
+                summary.text = if (extras.isEmpty()) context.getString(R.string.pref_fallback_packs_summary)
+                else extras.joinToString(" → ") { IconPacks.label(context, it) }
+            }
         }
     }
 

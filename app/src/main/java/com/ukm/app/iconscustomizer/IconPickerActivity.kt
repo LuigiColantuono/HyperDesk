@@ -24,6 +24,8 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.ukm.app.iconscustomizer.ui.IconPacks
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -33,11 +35,17 @@ import kotlinx.coroutines.withContext
 
 class IconPickerActivity : AppCompatActivity() {
 
+    /** The main pack, which per-app choices are stored under. */
     private lateinit var iconPackPackage: String
+    /** The pack whose icons the grid is showing; mixing means it can differ from the main one. */
+    private lateinit var browsedPack: String
     private lateinit var appName: String
     private lateinit var currentIconImage: ImageView
     private lateinit var componentString: String
     private lateinit var adapter: IconGridAdapter
+    private lateinit var spinner: ProgressBar
+    private lateinit var searchBox: com.google.android.material.textfield.TextInputEditText
+    private var loadJob: Job? = null
     private val allAvailableIcons = mutableListOf<String>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,14 +60,15 @@ class IconPickerActivity : AppCompatActivity() {
         val materialToolbar = findViewById<MaterialToolbar>(R.id.materialToolbar)
         setSupportActionBar(materialToolbar)
         iconPackPackage = intent.getStringExtra("EXTRA_ICON_PACK") ?: return finish()
+        browsedPack = iconPackPackage
         appName = intent.getStringExtra("EXTRA_APP_NAME") ?: "App"
         componentString = intent.getStringExtra("EXTRA_COMPONENT_STRING") ?: ""
 
         currentIconImage = findViewById(R.id.currentIconImage)
         val appNameTextView = findViewById<TextView>(R.id.themingAppName)
         val recyclerView = findViewById<RecyclerView>(R.id.iconRecyclerView)
-        val spinner = findViewById<ProgressBar>(R.id.loadingSpinner)
-        val searchBox = findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.searchIconEditText)
+        spinner = findViewById(R.id.loadingSpinner)
+        searchBox = findViewById(R.id.searchIconEditText)
         appNameTextView.text = appName
 
         lifecycleScope.launch {
@@ -70,14 +79,7 @@ class IconPickerActivity : AppCompatActivity() {
         adapter = IconGridAdapter(emptyList())
         recyclerView.adapter = adapter
 
-        lifecycleScope.launch {
-            val icons = withContext(Dispatchers.IO) {
-                IconPackHelper.getAllIconsFromPack(this@IconPickerActivity, iconPackPackage)
-            }
-            allAvailableIcons.addAll(icons)
-            spinner.visibility = View.GONE
-            adapter.updateData(allAvailableIcons)
-        }
+        loadBrowsedPack()
 
         searchBox.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -86,6 +88,38 @@ class IconPickerActivity : AppCompatActivity() {
                 adapter.filter(s.toString())
             }
         })
+    }
+
+    private fun loadBrowsedPack() {
+        supportActionBar?.subtitle = IconPacks.label(this, browsedPack)
+        spinner.visibility = View.VISIBLE
+        loadJob?.cancel()
+        loadJob = lifecycleScope.launch {
+            val pack = browsedPack
+            val icons = withContext(Dispatchers.IO) {
+                IconPackHelper.getAllIconsFromPack(this@IconPickerActivity, pack)
+            }
+            allAvailableIcons.clear()
+            allAvailableIcons.addAll(icons)
+            spinner.visibility = View.GONE
+            adapter.filter(searchBox.text?.toString().orEmpty())
+        }
+    }
+
+    private fun showPackSwitcher() {
+        val packs = IconPacks.installed(this)
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.menu_switch_pack)
+            .setSingleChoiceItems(
+                packs.map { it.name }.toTypedArray(),
+                packs.indexOfFirst { it.packageName == browsedPack }
+            ) { dialog, which ->
+                browsedPack = packs[which].packageName
+                dialog.dismiss()
+                loadBrowsedPack()
+            }
+            .setNegativeButton(R.string.action_cancel, null)
+            .show()
     }
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
@@ -97,32 +131,23 @@ class IconPickerActivity : AppCompatActivity() {
         val prefs = App.mService?.getRemotePreferences(MainActivity.PREF_NAME)
             ?: getSharedPreferences(MainActivity.PREF_NAME, MODE_PRIVATE)
         val manualIcon = prefs.getString("custom_icon_${iconPackPackage}_$componentString", null)
-        var targetDrawableName = manualIcon
-        if (targetDrawableName == null) {
-            val appFilterMap = withContext(Dispatchers.IO) {
-                IconPackHelper.getAppFilterMap(this@IconPickerActivity, iconPackPackage)
-            }
-            targetDrawableName = appFilterMap[componentString]
-            if (targetDrawableName == null) {
-                val pkgName = componentString.substringAfter("{").substringBefore("/")
-                val packagePrefix = "ComponentInfo{$pkgName/"
-                targetDrawableName =
-                    appFilterMap.entries.firstOrNull { it.key.startsWith(packagePrefix) }?.value
+        val chain = IconPackHelper.packChain(
+            iconPackPackage,
+            Prefs.string(prefs, Prefs.ICON_PACK_FALLBACKS)
+        )
+        val pkgName = componentString.substringAfter("{").substringBefore("/")
+        val className = componentString.substringAfter("/").substringBefore("}")
+        val loadedDrawable = withContext(Dispatchers.IO) {
+            val refs = IconPackHelper.candidates(this@IconPickerActivity, chain, pkgName, className, manualIcon)
+            val icon = IconPackHelper.loadFirst(this@IconPickerActivity, refs)
+            if (icon != null && Prefs.bool(prefs, Prefs.ICON_NORMALIZE)) {
+                IconNormalizer.normalize(this@IconPickerActivity, icon, Prefs.int(prefs, Prefs.ICON_NORMALIZE_SIZE))
+            } else {
+                icon
             }
         }
-        if (targetDrawableName != null) {
-            val loadedDrawable = withContext(Dispatchers.IO) {
-                IconPackHelper.loadIcon(
-                    this@IconPickerActivity,
-                    iconPackPackage,
-                    targetDrawableName
-                )
-            }
-            if (loadedDrawable != null) {
-                imageView.setImageDrawable(loadedDrawable)
-            } else {
-                loadStockAppIcon(imageView)
-            }
+        if (loadedDrawable != null) {
+            imageView.setImageDrawable(loadedDrawable)
         } else {
             loadStockAppIcon(imageView)
         }
@@ -140,6 +165,10 @@ class IconPickerActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            R.id.menuSwitchPack -> {
+                showPackSwitcher()
+                true
+            }
             R.id.menuResetDefault -> {
                 resetIconToDefault()
                 UIHelpers.restartLauncher(this)
@@ -172,10 +201,11 @@ class IconPickerActivity : AppCompatActivity() {
         }
     }
 
-    private fun saveIconChoice(chosenDrawableName: String) {
+    private fun saveIconChoice(choice: IconPackHelper.IconRef) {
         val manualOverrideKey = "custom_icon_${iconPackPackage}_$componentString"
-        UIHelpers.pushLocalPref(this, manualOverrideKey, chosenDrawableName)
-        UIHelpers.pushRemotePref(manualOverrideKey, chosenDrawableName)
+        val value = IconPackHelper.encodeOverride(iconPackPackage, choice)
+        UIHelpers.pushLocalPref(this, manualOverrideKey, value)
+        UIHelpers.pushRemotePref(manualOverrideKey, value)
         finish()
     }
 
@@ -206,30 +236,32 @@ class IconPickerActivity : AppCompatActivity() {
 
         override fun onBindViewHolder(holder: IconViewHolder, position: Int) {
             val drawableName = displayedIcons[position]
+            val pack = browsedPack
+            val iconKey = "$pack|$drawableName"
 
             holder.currentJob?.cancel()
 
-            holder.iconImage.tag = drawableName
+            holder.iconImage.tag = iconKey
             holder.iconImage.setImageDrawable(null)
 
-            val cachedIcon = memoryCache.get(drawableName)
+            val cachedIcon = memoryCache.get(iconKey)
             if (cachedIcon != null) {
                 holder.iconImage.setImageDrawable(cachedIcon)
             } else {
                 holder.currentJob = adapterScope.launch {
                     val loadedDrawable = withContext(Dispatchers.IO) {
-                        IconPackHelper.loadIcon(applicationContext, iconPackPackage, drawableName)
+                        IconPackHelper.loadIcon(applicationContext, pack, drawableName)
                     }
                     if (loadedDrawable != null) {
-                        memoryCache.put(drawableName, loadedDrawable)
-                        if (holder.iconImage.tag == drawableName) {
+                        memoryCache.put(iconKey, loadedDrawable)
+                        if (holder.iconImage.tag == iconKey) {
                             holder.iconImage.setImageDrawable(loadedDrawable)
                         }
                     }
                 }
             }
             holder.itemView.setOnClickListener {
-                saveIconChoice(drawableName)
+                saveIconChoice(IconPackHelper.IconRef(pack, drawableName))
                 UIHelpers.restartLauncher(this@IconPickerActivity)
             }
         }

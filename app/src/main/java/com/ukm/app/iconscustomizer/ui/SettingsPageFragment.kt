@@ -16,6 +16,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.ukm.app.iconscustomizer.AllAppsFragment
 import com.ukm.app.iconscustomizer.BuildConfig
 import com.ukm.app.iconscustomizer.ColorPickerActivity
+import com.ukm.app.iconscustomizer.IconPackHelper
 import com.ukm.app.iconscustomizer.MainActivity
 import com.ukm.app.iconscustomizer.Prefs
 import com.ukm.app.iconscustomizer.R
@@ -116,6 +117,7 @@ abstract class SettingsPageFragment : Fragment(), SettingsRenderer.Host, Refresh
     override fun onAction(item: ActionItem) {
         when (item.id) {
             "pick_icon_pack" -> showIconPackPicker()
+            "pick_fallback_packs" -> showFallbackPackPicker()
             "per_app_icons" -> {
                 val pack = PrefStore.string(Prefs.ICON_PACK)
                 if (pack == "none") showIconPackPicker(openAppsAfter = true) else openAllApps(pack)
@@ -164,6 +166,34 @@ abstract class SettingsPageFragment : Fragment(), SettingsRenderer.Host, Refresh
                 renderer?.refresh()
                 dialog.dismiss()
                 if (openAppsAfter && pack != "none") openAllApps(pack)
+            }
+            .setNegativeButton(R.string.action_cancel, null)
+            .show()
+    }
+
+    /** Packs are tried in the order they were ticked, which the row's summary shows. */
+    private fun showFallbackPackPicker() {
+        val ctx = requireContext()
+        val main = PrefStore.string(Prefs.ICON_PACK)
+        val packs = IconPacks.installed(ctx).filter { it.packageName != main }
+        if (packs.isEmpty()) return toast(R.string.toast_no_other_packs)
+        val ids = packs.map { it.packageName }
+        val selected = IconPackHelper.parsePackList(PrefStore.string(Prefs.ICON_PACK_FALLBACKS))
+            .filter { it in ids }
+            .toMutableList()
+        MaterialAlertDialogBuilder(ctx)
+            .setIcon(R.drawable.ic_widgets)
+            .setTitle(R.string.pref_fallback_packs)
+            .setMultiChoiceItems(
+                packs.map { it.name }.toTypedArray(),
+                BooleanArray(ids.size) { ids[it] in selected }
+            ) { _, which, checked ->
+                if (checked) selected += ids[which] else selected -= ids[which]
+            }
+            .setPositiveButton(R.string.action_save) { _, _ ->
+                PrefStore.put(Prefs.ICON_PACK_FALLBACKS, selected.joinToString(","))
+                onSettingChanged(Scope.LAUNCHER)
+                renderer?.refresh()
             }
             .setNegativeButton(R.string.action_cancel, null)
             .show()
