@@ -66,6 +66,8 @@ object IconPackHelper {
      * Icons for one app, best first: the manual override, then each pack of [chain] in order.
      * Lazy, so callers stop at the first one that actually loads. That way an override
      * pointing at an uninstalled pack falls through to the next choice.
+     * With [overrideOnly] only the manual choice counts, for pinned shortcuts: a pack's entry
+     * for their app is the app's icon, not the shortcut's.
      */
     fun candidates(
         context: Context,
@@ -73,9 +75,11 @@ object IconPackHelper {
         packageName: String,
         className: String,
         override: String?,
+        overrideOnly: Boolean = false,
     ): Sequence<IconRef> = sequence {
         val main = chain.firstOrNull() ?: return@sequence
         if (!override.isNullOrEmpty()) yield(decodeOverride(main, override))
+        if (overrideOnly) return@sequence
         for (pack in chain) {
             findInPack(context, pack, packageName, className)?.let { yield(IconRef(pack, it)) }
         }

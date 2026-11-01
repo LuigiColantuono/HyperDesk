@@ -2,8 +2,10 @@ package com.ukm.app.iconscustomizer
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.content.BroadcastReceiver
 import android.content.Context.MODE_PRIVATE
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
@@ -41,6 +43,18 @@ class AllAppsFragment : Fragment(R.layout.fragment_all_apps) {
     private lateinit var iconPackPackage: String
     private lateinit var adapter: AppAdapter
     private var allApps = listOf<AppInfo>()
+    private var installedApps = listOf<AppInfo>()
+    private var pinnedShortcuts = listOf<AppInfo>()
+    private var showShortcuts = false
+    private var searchQuery = ""
+    private val shortcutsReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            pinnedShortcuts = intent.getStringArrayListExtra(Constants.EXTRA_SHORTCUTS)
+                .orEmpty()
+                .mapNotNull(::parseShortcut)
+            refreshList()
+        }
+    }
     private var packChain = listOf<String>()
     private var showThemedIcons = true
 
@@ -54,7 +68,35 @@ class AllAppsFragment : Fragment(R.layout.fragment_all_apps) {
         val className: String,
         val stockIcon: Drawable,
         val packageName: String
-    )
+    ) {
+        val isShortcut get() = Prefs.isShortcutKey(componentString)
+    }
+
+    /** One launcher reply entry: package, shortcut id and label, tab-separated. */
+    private fun parseShortcut(entry: String): AppInfo? {
+        val parts = entry.split('\t', limit = 3)
+        if (parts.size < 3) return null
+        val (pkg, id, label) = parts
+        val icon = try {
+            requireContext().packageManager.getApplicationIcon(pkg)
+        } catch (_: PackageManager.NameNotFoundException) {
+            return null
+        }
+        return AppInfo(label, Prefs.shortcutKey(pkg, id), id, icon, pkg)
+    }
+
+    private fun refreshList() {
+        val shortcuts = if (showShortcuts) pinnedShortcuts else emptyList()
+        allApps = (installedApps + shortcuts).sortedBy { it.name.lowercase() }
+        adapter.updateData(allApps)
+        adapter.filter(searchQuery)
+    }
+
+    private fun requestPinnedShortcuts() {
+        for (launcher in Constants.LAUNCHER_PACKAGES) {
+            requireContext().sendBroadcast(Intent(Constants.ACTION_LIST_SHORTCUTS).setPackage(launcher))
+        }
+    }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -75,6 +117,12 @@ class AllAppsFragment : Fragment(R.layout.fragment_all_apps) {
             tvActivePackTitle.text = packLabel
         }
         showThemedIcons = getPrefs().getBoolean("preview_themed_icons", true)
+        showShortcuts = getPrefs().getBoolean("preview_show_shortcuts", false)
+        requireContext().registerReceiver(
+            shortcutsReceiver,
+            IntentFilter(Constants.ACTION_SHORTCUTS_RESULT),
+            Context.RECEIVER_EXPORTED
+        )
         recyclerView.layoutManager =
             LinearLayoutManager(requireContext())
         adapter = AppAdapter(emptyList(), requireContext())
@@ -91,6 +139,16 @@ class AllAppsFragment : Fragment(R.layout.fragment_all_apps) {
                 toggleItem.isCheckable = true
                 toggleItem.isChecked = showThemedIcons
                 toggleItem.setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+
+                val shortcutsItem = menu.add(
+                    Menu.NONE,
+                    102,
+                    Menu.NONE,
+                    R.string.menu_show_shortcuts
+                )
+                shortcutsItem.isCheckable = true
+                shortcutsItem.isChecked = showShortcuts
+                shortcutsItem.setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
             }
 
             override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
@@ -103,6 +161,14 @@ class AllAppsFragment : Fragment(R.layout.fragment_all_apps) {
                         showThemedIcons
                     )
                     adapter.toggleThemedMode(showThemedIcons)
+                    return true
+                }
+                if (menuItem.itemId == 102) {
+                    showShortcuts = !showShortcuts
+                    menuItem.isChecked = showShortcuts
+                    UIHelpers.pushLocalPref(requireContext(), "preview_show_shortcuts", showShortcuts)
+                    if (showShortcuts) requestPinnedShortcuts()
+                    refreshList()
                     return true
                 }
                 return false
@@ -118,8 +184,9 @@ class AllAppsFragment : Fragment(R.layout.fragment_all_apps) {
             withContext(Dispatchers.IO) {
                 packChain.forEach { IconPackHelper.getAppFilterMap(requireContext(), it) }
             }
-            allApps = withContext(Dispatchers.IO) { loadInstalledApps() }
-            adapter.updateData(allApps)
+            installedApps = withContext(Dispatchers.IO) { loadInstalledApps() }
+            refreshList()
+            if (showShortcuts) requestPinnedShortcuts()
         }
 
         searchEditText.addTextChangedListener(object : TextWatcher {
@@ -133,7 +200,8 @@ class AllAppsFragment : Fragment(R.layout.fragment_all_apps) {
 
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: Editable?) {
-                adapter.filter(s.toString())
+                searchQuery = s.toString()
+                adapter.filter(searchQuery)
             }
         })
     }
@@ -148,6 +216,7 @@ class AllAppsFragment : Fragment(R.layout.fragment_all_apps) {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        requireContext().unregisterReceiver(shortcutsReceiver)
         if (::adapter.isInitialized) {
             adapter.cleanUp()
         }
@@ -223,7 +292,8 @@ class AllAppsFragment : Fragment(R.layout.fragment_all_apps) {
                 packChain,
                 app.packageName,
                 app.className,
-                manualIcon
+                manualIcon,
+                overrideOnly = app.isShortcut
             ).firstOrNull()
 
             if (manualIcon != null && target != null) {

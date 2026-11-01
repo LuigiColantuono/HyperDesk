@@ -4,6 +4,13 @@ object Constants {
     const val TAG = "UKMTAG"
     const val ACTION_RELOAD = "com.ukm.app.RELOAD_ICONS"
 
+    /** App to launcher: list the pinned shortcuts. Only the launcher is allowed to read them. */
+    const val ACTION_LIST_SHORTCUTS = "com.ukm.app.LIST_SHORTCUTS"
+
+    /** Launcher to app, sent to this module only. */
+    const val ACTION_SHORTCUTS_RESULT = "com.ukm.app.SHORTCUTS_RESULT"
+    const val EXTRA_SHORTCUTS = "shortcuts"
+
     /** HyperOS system launcher (CN + most global ROMs) and the POCO launcher. */
     val LAUNCHER_PACKAGES = listOf("com.miui.home", "com.mi.android.globallauncher")
 

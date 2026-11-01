@@ -20,6 +20,7 @@ object Prefs {
     const val ICON_NORMALIZE = "icon_normalize"
     const val ICON_NORMALIZE_SIZE = "icon_normalize_size"
     const val HIDE_SHADOWS = "hide_icon_shadows"
+    const val BADGE_BLUR = "badge_blur"
 
     // Labels
     const val HIDE_LABELS = "hide_icon_labels"
@@ -85,6 +86,13 @@ object Prefs {
 
     fun labelKey(component: String) = CUSTOM_LABEL_PREFIX + component
 
+    private const val SHORTCUT_PREFIX = "ShortcutInfo{"
+
+    /** Pinned shortcuts share their app's component, so they are identified by id instead. */
+    fun shortcutKey(packageName: String, id: String) = "$SHORTCUT_PREFIX$packageName/$id}"
+
+    fun isShortcutKey(key: String) = key.startsWith(SHORTCUT_PREFIX)
+
     val DEFAULTS: Map<String, Any> = mapOf(
         ICON_PACK to "none",
         ICON_PACK_FALLBACKS to "",
@@ -97,6 +105,7 @@ object Prefs {
         ICON_NORMALIZE to false,
         ICON_NORMALIZE_SIZE to 90,
         HIDE_SHADOWS to false,
+        BADGE_BLUR to false,
         HIDE_LABELS to false,
         HIDE_DOCK_LABELS to false,
         LABEL_SIZE to 0,

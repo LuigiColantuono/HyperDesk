@@ -174,7 +174,14 @@ class IconPickerActivity : AppCompatActivity() {
         val pkgName = componentString.substringAfter("{").substringBefore("/")
         val className = componentString.substringAfter("/").substringBefore("}")
         val loadedDrawable = withContext(Dispatchers.IO) {
-            val refs = IconPackHelper.candidates(this@IconPickerActivity, chain, pkgName, className, manualIcon)
+            val refs = IconPackHelper.candidates(
+                this@IconPickerActivity,
+                chain,
+                pkgName,
+                className,
+                manualIcon,
+                overrideOnly = Prefs.isShortcutKey(componentString)
+            )
             val icon = IconPackHelper.loadFirst(this@IconPickerActivity, refs)
             if (icon != null && Prefs.bool(prefs, Prefs.ICON_NORMALIZE)) {
                 IconNormalizer.normalize(this@IconPickerActivity, icon, Prefs.int(prefs, Prefs.ICON_NORMALIZE_SIZE))

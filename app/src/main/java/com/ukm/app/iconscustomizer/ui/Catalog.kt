@@ -49,6 +49,7 @@ object Catalog {
                     SwitchItem(Prefs.ICON_NORMALIZE, R.string.pref_icon_normalize, R.string.pref_icon_normalize_summary, R.drawable.ic_tune, Scope.LAUNCHER, listOf(on(Prefs.THEMED_ICONS))),
                     SliderItem(Prefs.ICON_NORMALIZE_SIZE, R.string.pref_icon_normalize_size, R.drawable.ic_width, 70, 100, Scope.LAUNCHER, unit = "%", summary = R.string.pref_icon_normalize_size_summary, dependsOn = listOf(on(Prefs.THEMED_ICONS), on(Prefs.ICON_NORMALIZE))),
                     SwitchItem(Prefs.HIDE_SHADOWS, R.string.pref_hide_icon_shadows, R.string.pref_hide_icon_shadows_summary, R.drawable.ic_shadow, Scope.LAUNCHER, beta = true),
+                    SwitchItem(Prefs.BADGE_BLUR, R.string.pref_badge_blur, R.string.pref_badge_blur_summary, R.drawable.ic_blur, Scope.LAUNCHER, beta = true),
                 )
             ),
         )

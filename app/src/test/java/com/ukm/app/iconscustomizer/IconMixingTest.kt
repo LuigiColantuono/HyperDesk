@@ -73,6 +73,14 @@ class IconMixingTest {
     }
 
     @Test
+    fun shortcutKeysAreTellableFromAppKeys() {
+        val key = Prefs.shortcutKey("com.app", "pkg:string/clean")
+        assertEquals("ShortcutInfo{com.app/pkg:string/clean}", key)
+        assertEquals(true, Prefs.isShortcutKey(key))
+        assertEquals(false, Prefs.isShortcutKey("ComponentInfo{com.app/.Main}"))
+    }
+
+    @Test
     fun tinyGlyphUpscaleIsCapped() {
         val fit = IconNormalizer.fit(Box(49, 49, 51, 51), 100, 100)
         assertEquals(3f, fit.scale, 0.01f)

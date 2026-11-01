@@ -8,12 +8,20 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
+import android.content.pm.LauncherApps
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RectF
 import android.graphics.drawable.Drawable
 import android.os.Process
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
 import android.widget.GridView
+import androidx.core.graphics.createBitmap
+import com.ukm.app.iconscustomizer.BuildConfig
 import com.ukm.app.iconscustomizer.Constants
 import com.ukm.app.iconscustomizer.IconNormalizer
 import com.ukm.app.iconscustomizer.IconPackHelper
@@ -22,12 +30,14 @@ import com.ukm.app.iconscustomizer.Prefs
 import com.ukm.app.iconscustomizer.XposedHelpers
 import io.github.libxposed.api.XposedModule
 import org.w3c.dom.Element
+import java.util.WeakHashMap
 
 /** Hooks for the HyperOS System Launcher (com.miui.home) and the POCO Launcher. */
 class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String) :
     HookModule(module, prefs, pkg) {
 
     private var context: Context? = null
+    private var deepShortcutClass: Class<*>? = null
 
     private val iconPack = string(Prefs.ICON_PACK)
     private val packChain = IconPackHelper.packChain(iconPack, string(Prefs.ICON_PACK_FALLBACKS))
@@ -48,6 +58,7 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
 
     fun install(cl: ClassLoader) {
         safeHook("launcherContext") { contextHook() }
+        deepShortcutClass = findClassOrNull(cl, "com.miui.home.launcher.DeepShortcutInfo")
 
         // Icons
         if (int(Prefs.ICON_SCALE) != 100) safeHook("iconScale") { iconScaleHook(cl) }
@@ -57,7 +68,9 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
         if (iconPackActive) {
             safeHook("iconPack") { iconPackHook(cl) }
             safeHook("defaultIconFlag") { defaultIconFlagHook(cl) }
+            safeHook("shortcutIcons") { shortcutIconHook(cl) }
         }
+        if (bool(Prefs.BADGE_BLUR)) safeHook("badgeBlur") { badgeBlurHooks(cl) }
 
         // Labels
         safeHook("appLabels") { appLabelsHook(cl) }
@@ -130,6 +143,11 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
 
     private fun dp(value: Int, c: Context) = value * c.resources.displayMetrics.density
 
+    private companion object {
+        const val BADGE_FILL_ALPHA = 150
+        const val BADGE_BLUR_FACTOR = 6
+    }
+
     // ---------------------------------------------------------------- context & reload
 
     /** Framework entry point, independent of the launcher's own Application class name. */
@@ -142,17 +160,40 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
                 try {
                     app.registerReceiver(object : BroadcastReceiver() {
                         override fun onReceive(c: Context, intent: Intent) {
-                            if (intent.action == Constants.ACTION_RELOAD) {
-                                Log.i(Constants.TAG, "Reload broadcast received, restarting $target")
-                                Process.killProcess(Process.myPid())
+                            when (intent.action) {
+                                Constants.ACTION_RELOAD -> {
+                                    Log.i(Constants.TAG, "Reload broadcast received, restarting $target")
+                                    Process.killProcess(Process.myPid())
+                                }
+                                Constants.ACTION_LIST_SHORTCUTS -> sendPinnedShortcuts(c)
                             }
                         }
-                    }, IntentFilter(Constants.ACTION_RELOAD), Context.RECEIVER_EXPORTED)
+                    }, IntentFilter().apply {
+                        addAction(Constants.ACTION_RELOAD)
+                        addAction(Constants.ACTION_LIST_SHORTCUTS)
+                    }, Context.RECEIVER_EXPORTED)
                 } catch (e: Exception) {
                     Log.e(Constants.TAG, "registerReceiver", e)
                 }
             }
             result
+        }
+    }
+
+    /** Answers to this module only, whoever asked, so other apps can't read the list. */
+    private fun sendPinnedShortcuts(c: Context) {
+        try {
+            val query = LauncherApps.ShortcutQuery().setQueryFlags(LauncherApps.ShortcutQuery.FLAG_MATCH_PINNED)
+            val pinned = c.getSystemService(LauncherApps::class.java)
+                .getShortcuts(query, Process.myUserHandle()).orEmpty()
+            val entries = ArrayList(pinned.map { "${it.`package`}\t${it.id}\t${it.shortLabel}" })
+            c.sendBroadcast(
+                Intent(Constants.ACTION_SHORTCUTS_RESULT)
+                    .setPackage(BuildConfig.APPLICATION_ID)
+                    .putStringArrayListExtra(Constants.EXTRA_SHORTCUTS, entries)
+            )
+        } catch (t: Throwable) {
+            warn("sendPinnedShortcuts: $t")
         }
     }
 
@@ -181,6 +222,36 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
             XposedHelpers.setStaticBooleanField(cls, "sIsDefaultIcon", false)
             result
         }
+    }
+
+    /**
+     * Pinned shortcuts skip DrawableInfo#applyTo: their icon comes straight from the launcher
+     * database or from the owning app, and every path ends in this setter.
+     */
+    private fun shortcutIconHook(cl: ClassLoader) {
+        val deep = deepShortcutClass ?: return
+        val itemInfo = findClassAny(cl, "com.miui.home.launcher.ItemInfoWithIconAndMessage")
+        hook(findMethodLoose(itemInfo, "setIconDrawable", Drawable::class.java)) { chain ->
+            val self = chain.thisObject
+            val original = chain.args[0] as? Drawable
+            if (self == null || original == null || !deep.isInstance(self)) return@hook chain.proceed()
+            val custom = try {
+                shortcutIcon(self, original)
+            } catch (e: Exception) {
+                Log.e(Constants.TAG, "shortcutIcon", e)
+                null
+            }
+            if (custom == null) chain.proceed() else chain.proceed(arrayOf<Any?>(custom))
+        }
+    }
+
+    private fun shortcutIcon(item: Any, original: Drawable): Drawable? {
+        val c = context ?: return null
+        val key = itemKey(item) ?: return null
+        val manual = prefs?.getString("custom_icon_${iconPack}_$key", null) ?: return null
+        val refs = IconPackHelper.candidates(c, packChain, "", "", manual, overrideOnly = true)
+        val drawable = IconPackHelper.loadFirst(c, refs) ?: return null
+        return normalized(recolor(drawable)).apply { bounds = original.bounds }
     }
 
     private fun iconPackHook(cl: ClassLoader) {
@@ -300,9 +371,7 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
 
         fun labelFor(icon: Any?): String? {
             val info = (icon as? View)?.tag ?: return null
-            if (!isAppItem(info)) return null
-            val component = componentOf(info) ?: return null
-            val key = "ComponentInfo{${component.packageName}/${component.className}}"
+            val key = itemKey(info) ?: return null
             return labels[Prefs.labelKey(key)] as? String
         }
 
@@ -319,11 +388,111 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
         }
     }
 
-    /** itemType 0 is an app; deep shortcuts share the app's component but keep their own name. */
+    /** The key an item's custom icon and name are stored under, or null if it can't have them. */
+    private fun itemKey(itemInfo: Any): String? {
+        val component = componentOf(itemInfo) ?: return null
+        if (deepShortcutClass?.isInstance(itemInfo) == true) {
+            val id = findMethodByName(itemInfo.javaClass, "getDeepShortcutId", 0).invoke(itemInfo) as? String
+            return id?.let { Prefs.shortcutKey(component.packageName, it) }
+        }
+        if (!isAppItem(itemInfo)) return null
+        return "ComponentInfo{${component.packageName}/${component.className}}"
+    }
+
+    /** itemType 0 is an app, as opposed to widgets and other home screen items. */
     private fun isAppItem(itemInfo: Any): Boolean = try {
         XposedHelpers.findField(itemInfo.javaClass, "itemType").getInt(itemInfo) == 0
     } catch (_: Throwable) {
         false
+    }
+
+    // ---------------------------------------------------------------- badges
+
+    private var badgeHost: View? = null
+    private var capturingIcon = false
+    private val frostCache = WeakHashMap<Bitmap, Bitmap?>()
+    private val frostPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+
+    /**
+     * Frosted glass for notification badges. Window blur can't do this: it only reaches what
+     * is behind the launcher window, so it would blur the wallpaper and never the icon under
+     * the badge. Instead the icon is captured, softened by downscaling, and drawn under a
+     * translucent badge. Whatever fails, the badge is still drawn.
+     */
+    private fun badgeBlurHooks(cl: ClassLoader) {
+        val render = findClassAny(cl, "com.miui.home.launcher.IconMessageRender")
+        val params = findClassAny(cl, "com.miui.home.launcher.IconMessageRender\$DrawParams")
+
+        hook(findMethodByName(params, "createMessageBitmap", 1)) { chain ->
+            (XposedHelpers.getObjectField(chain.thisObject, "mCirclePaint") as? Paint)?.alpha = BADGE_FILL_ALPHA
+            chain.proceed()
+        }
+
+        // The renderer doesn't know its view, and the frost needs it, so remember it for the call.
+        for (name in arrayOf("com.miui.home.launcher.ShortcutIcon", "com.miui.home.launcher.ItemIcon")) {
+            safeHook("badgeHost") {
+                val icon = findClassAny(cl, name)
+                hook(findMethodByName(icon, "drawMessageIfNecessary", 1)) { chain ->
+                    if (capturingIcon) return@hook null
+                    badgeHost = chain.thisObject as? View
+                    try {
+                        chain.proceed()
+                    } finally {
+                        badgeHost = null
+                    }
+                }
+            }
+        }
+
+        hook(findMethodByName(render, "drawIconMessageBitmap", 4)) { chain ->
+            val host = badgeHost
+            if (host != null) {
+                try {
+                    val canvas = chain.args[0] as Canvas
+                    drawFrost(canvas, host, chain.args[1]!!, chain.args[2] as Float, chain.args[3] as Float)
+                } catch (t: Throwable) {
+                    warn("drawFrost: $t")
+                }
+            }
+            chain.proceed()
+        }
+    }
+
+    private fun drawFrost(canvas: Canvas, host: View, params: Any, x: Float, y: Float) {
+        val message = XposedHelpers.getObjectField(params, "messageBitmap") as? Bitmap ?: return
+        if (!frostCache.containsKey(message)) frostCache[message] = buildFrost(host, params, message, x, y)
+        val frost = frostCache[message] ?: return
+        val scale = XposedHelpers.findField(params.javaClass, "scale").getFloat(params)
+        frostPaint.alpha = (XposedHelpers.findField(params.javaClass, "alpha").getFloat(params) * 255).toInt()
+        canvas.save()
+        canvas.translate(x, y)
+        canvas.scale(scale, scale)
+        canvas.drawBitmap(frost, -frost.width / 2f, -frost.height / 2f, frostPaint)
+        canvas.restore()
+    }
+
+    /** Null means "can't be captured", which is cached too so a failure isn't retried every frame. */
+    private fun buildFrost(host: View, params: Any, message: Bitmap, x: Float, y: Float): Bitmap? = try {
+        val width = message.width
+        val height = message.height
+        val small = createBitmap((width / BADGE_BLUR_FACTOR).coerceAtLeast(1), (height / BADGE_BLUR_FACTOR).coerceAtLeast(1))
+        val capture = Canvas(small)
+        capture.scale(small.width.toFloat() / width, small.height.toFloat() / height)
+        capture.translate(width / 2f - x, height / 2f - y)
+        capturingIcon = true
+        try {
+            host.draw(capture)
+        } finally {
+            capturingIcon = false
+        }
+        val frost = createBitmap(width, height)
+        val canvas = Canvas(frost)
+        (findMethodByName(params.javaClass, "createCirclePatch", 0).invoke(params) as? Path)?.let(canvas::clipPath)
+        canvas.drawBitmap(small, null, RectF(0f, 0f, width.toFloat(), height.toFloat()), Paint(Paint.FILTER_BITMAP_FLAG))
+        frost
+    } catch (t: Throwable) {
+        warn("buildFrost: $t")
+        null
     }
 
     // ---------------------------------------------------------------- dock
