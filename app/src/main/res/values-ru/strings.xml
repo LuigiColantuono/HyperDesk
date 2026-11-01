@@ -82,6 +82,7 @@
     <string name="pref_icon_normalize_size">Единый размер</string>
     <string name="pref_icon_normalize_size_summary">Доля области значка, занятая рисунком. 100% ближе всего к системным значкам</string>
     <string name="menu_switch_pack">Сменить набор</string>
+    <string name="menu_rename_app">Переименовать</string>
     <string name="toast_no_other_packs">Установите ещё один набор значков</string>
     <string name="action_save">Сохранить</string>
     <string name="pref_icon_scale">Размер значков</string>

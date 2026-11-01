@@ -211,7 +211,7 @@ class AllAppsFragment : Fragment(R.layout.fragment_all_apps) {
         @SuppressLint("SetTextI18n")
         override fun onBindViewHolder(holder: AppViewHolder, position: Int) {
             val app = filteredApps[position]
-            holder.appName.text = app.name
+            holder.appName.text = prefs.getString(Prefs.labelKey(app.componentString), null) ?: app.name
 
             val manualIcon = prefs.getString(
                 "custom_icon_${iconPackPackage}_${app.componentString}",

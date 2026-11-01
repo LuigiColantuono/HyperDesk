@@ -237,7 +237,7 @@ abstract class SettingsPageFragment : Fragment(), SettingsRenderer.Host, Refresh
             val settings = JSONObject()
             for ((k, v) in PrefStore.all()) {
                 if (k == Prefs.AUTO_APPLY || v == null) continue
-                if (k in Prefs.DEFAULTS || k.startsWith("custom_icon_") || k.startsWith("selected_")) settings.put(k, v)
+                if (k in Prefs.DEFAULTS || k.startsWith("custom_icon_") || k.startsWith(Prefs.CUSTOM_LABEL_PREFIX) || k.startsWith("selected_")) settings.put(k, v)
             }
             val json = JSONObject()
                 .put("app", "HyperDesk")

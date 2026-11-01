@@ -60,6 +60,7 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
         }
 
         // Labels
+        safeHook("appLabels") { appLabelsHook(cl) }
         if (bool(Prefs.HIDE_LABELS)) safeHook("hideLabels") {
             returnConstant(cl, listOf("com.miui.home.launcher.ShortcutIcon"), "getIsHideTitle", true)
             returnConstant(cl, deviceConfigs, "isHideAppTitle", true)
@@ -283,6 +284,46 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
             Log.e(Constants.TAG, "recolor", e)
             icon
         }
+    }
+
+    // ---------------------------------------------------------------- labels
+
+    /**
+     * Renames at the view rather than on ShortcutInfo: its title getter also feeds the
+     * launcher database, so a rename there would persist after the module is disabled.
+     * Folders are a different view class, so they are never affected.
+     */
+    private fun appLabelsHook(cl: ClassLoader) {
+        val labels = (prefs?.all ?: emptyMap<String, Any?>())
+            .filterKeys { it.startsWith(Prefs.CUSTOM_LABEL_PREFIX) }
+        if (labels.isEmpty()) return
+
+        fun labelFor(icon: Any?): String? {
+            val info = (icon as? View)?.tag ?: return null
+            if (!isAppItem(info)) return null
+            val component = componentOf(info) ?: return null
+            val key = "ComponentInfo{${component.packageName}/${component.className}}"
+            return labels[Prefs.labelKey(key)] as? String
+        }
+
+        val shortcutIcon = findClassAny(cl, "com.miui.home.launcher.ShortcutIcon")
+        val setTitle = findMethodLoose(shortcutIcon, "setTitle", CharSequence::class.java)
+        hook(setTitle) { chain ->
+            val label = labelFor(chain.thisObject) ?: return@hook chain.proceed()
+            chain.proceed(arrayOf<Any?>(label))
+        }
+        // The title can arrive before the item it belongs to, so apply it again once the tag is set.
+        after(findMethodByName(shortcutIcon, "setTag", 1)) { chain, result ->
+            labelFor(chain.thisObject)?.let { setTitle.invoke(chain.thisObject, it) }
+            result
+        }
+    }
+
+    /** itemType 0 is an app; deep shortcuts share the app's component but keep their own name. */
+    private fun isAppItem(itemInfo: Any): Boolean = try {
+        XposedHelpers.findField(itemInfo.javaClass, "itemType").getInt(itemInfo) == 0
+    } catch (_: Throwable) {
+        false
     }
 
     // ---------------------------------------------------------------- dock

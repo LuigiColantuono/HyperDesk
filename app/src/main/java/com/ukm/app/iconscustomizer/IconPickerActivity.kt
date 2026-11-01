@@ -11,6 +11,8 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -26,6 +28,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.ukm.app.iconscustomizer.ui.IconPacks
+import com.ukm.app.iconscustomizer.ui.PrefStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -69,7 +72,7 @@ class IconPickerActivity : AppCompatActivity() {
         val recyclerView = findViewById<RecyclerView>(R.id.iconRecyclerView)
         spinner = findViewById(R.id.loadingSpinner)
         searchBox = findViewById(R.id.searchIconEditText)
-        appNameTextView.text = appName
+        appNameTextView.text = customLabel() ?: appName
 
         lifecycleScope.launch {
             loadCurrentIcon(currentIconImage)
@@ -122,6 +125,39 @@ class IconPickerActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun customLabel() = PrefStore.get(Prefs.labelKey(componentString)) as? String
+
+    private fun saveLabel(label: String?) {
+        PrefStore.put(Prefs.labelKey(componentString), label)
+        findViewById<TextView>(R.id.themingAppName).text = label ?: appName
+        UIHelpers.restartLauncher(this)
+    }
+
+    private fun showRenameDialog() {
+        val input = EditText(this).apply {
+            setSingleLine()
+            hint = appName
+            setText(customLabel())
+            setSelection(text.length)
+        }
+        val padding = (24 * resources.displayMetrics.density).toInt()
+        val container = FrameLayout(this).apply {
+            setPadding(padding, padding / 3, padding, 0)
+            addView(input)
+        }
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.menu_rename_app)
+            .setView(container)
+            .setPositiveButton(R.string.action_save) { _, _ ->
+                saveLabel(input.text.toString().trim().ifEmpty { null })
+            }
+            .setNegativeButton(R.string.action_cancel, null)
+        if (customLabel() != null) {
+            dialog.setNeutralButton(R.string.action_reset_short) { _, _ -> saveLabel(null) }
+        }
+        dialog.show()
+    }
+
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         menuInflater.inflate(R.menu.icon_picker_menu, menu)
         return true
@@ -165,6 +201,10 @@ class IconPickerActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
+            R.id.menuRenameApp -> {
+                showRenameDialog()
+                true
+            }
             R.id.menuSwitchPack -> {
                 showPackSwitcher()
                 true

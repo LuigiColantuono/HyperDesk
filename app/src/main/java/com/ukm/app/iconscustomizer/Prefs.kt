@@ -80,6 +80,11 @@ object Prefs {
     // App only
     const val AUTO_APPLY = "auto_apply"
 
+    /** Per-app names, stored per activity and independent of the icon pack. */
+    const val CUSTOM_LABEL_PREFIX = "custom_label_"
+
+    fun labelKey(component: String) = CUSTOM_LABEL_PREFIX + component
+
     val DEFAULTS: Map<String, Any> = mapOf(
         ICON_PACK to "none",
         ICON_PACK_FALLBACKS to "",
