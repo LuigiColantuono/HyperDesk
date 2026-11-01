@@ -78,6 +78,9 @@
     <string name="menu_show_shortcuts">Show home shortcuts</string>
     <string name="pref_badge_blur">Frosted notification badges</string>
     <string name="pref_badge_blur_summary">Badges turn translucent and blur the icon beneath them</string>
+    <string name="pref_badge_blur_level">Badge blur level</string>
+    <string name="pref_folder_blur">Blur opened folders</string>
+    <string name="pref_folder_blur_summary">Blur what is behind the folder panel</string>
     <string name="toast_no_other_packs">Install another icon pack to mix it in</string>
     <string name="action_save">Save</string>
     <string name="pref_homescreen_only">Home screen only</string>

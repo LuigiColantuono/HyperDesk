@@ -50,6 +50,7 @@ object Catalog {
                     SliderItem(Prefs.ICON_NORMALIZE_SIZE, R.string.pref_icon_normalize_size, R.drawable.ic_width, 70, 100, Scope.LAUNCHER, unit = "%", summary = R.string.pref_icon_normalize_size_summary, dependsOn = listOf(on(Prefs.THEMED_ICONS), on(Prefs.ICON_NORMALIZE))),
                     SwitchItem(Prefs.HIDE_SHADOWS, R.string.pref_hide_icon_shadows, R.string.pref_hide_icon_shadows_summary, R.drawable.ic_shadow, Scope.LAUNCHER, beta = true),
                     SwitchItem(Prefs.BADGE_BLUR, R.string.pref_badge_blur, R.string.pref_badge_blur_summary, R.drawable.ic_blur, Scope.LAUNCHER, beta = true),
+                    SliderItem(Prefs.BADGE_BLUR_LEVEL, R.string.pref_badge_blur_level, R.drawable.ic_blur, 1, 100, Scope.LAUNCHER, unit = "%", dependsOn = listOf(on(Prefs.BADGE_BLUR))),
                 )
             ),
         )
@@ -121,6 +122,8 @@ object Catalog {
                     SliderItem(Prefs.FOLDER_ALPHA, R.string.pref_opacity, R.drawable.ic_opacity, 0, 100, Scope.LAUNCHER, unit = "%", dependsOn = listOf(on(Prefs.FOLDER))),
                     SliderItem(Prefs.FOLDER_STROKE, R.string.pref_stroke, R.drawable.ic_stroke, 0, 4, Scope.LAUNCHER, unit = " dp", dependsOn = listOf(on(Prefs.FOLDER))),
                     SliderItem(Prefs.FOLDER_RADIUS, R.string.pref_corner_radius, R.drawable.ic_rounded_corner, 0, 40, Scope.LAUNCHER, unit = " dp", dependsOn = listOf(on(Prefs.FOLDER))),
+                    SwitchItem(Prefs.FOLDER_BLUR, R.string.pref_folder_blur, R.string.pref_folder_blur_summary, R.drawable.ic_blur, Scope.LAUNCHER, beta = true),
+                    SliderItem(Prefs.FOLDER_BLUR_RADIUS, R.string.pref_blur_radius, R.drawable.ic_blur, 10, 150, Scope.LAUNCHER, unit = " dp", dependsOn = listOf(on(Prefs.FOLDER_BLUR))),
                 )
             ),
             Section(

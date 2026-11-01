@@ -30,7 +30,7 @@ HyperDesk is the successor of IconsCustomizer: one LSPosed module for the HyperO
 
 | Category | What you can change |
 | --- | --- |
-| Icons | Icon packs, fallback packs and per-app icons from any pack (mix packs freely), per-app names, pinned shortcuts such as Cleaner, frosted notification badges, uniform size across packs, Monet recolor, icon size (relative, stays centred), shadows |
+| Icons | Icon packs, fallback packs and per-app icons from any pack (mix packs freely), per-app names, pinned shortcuts such as Cleaner, frosted notification badges and opened folder blur with adjustable levels, uniform size across packs, Monet recolor, icon size (relative, stays centred), shadows |
 | Labels | Hide app / dock names, label text size |
 | Dock | 9 materials (stock, glass, frosted with real blur, liquid glass, solid, Monet, gradient, AMOLED, outline), tint, opacity, border, corner radius, width, padding, unlimited icons |
 | Folders | Same materials, corner radius, opacity, border, folder columns |

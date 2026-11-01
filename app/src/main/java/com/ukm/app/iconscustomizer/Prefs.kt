@@ -21,6 +21,7 @@ object Prefs {
     const val ICON_NORMALIZE_SIZE = "icon_normalize_size"
     const val HIDE_SHADOWS = "hide_icon_shadows"
     const val BADGE_BLUR = "badge_blur"
+    const val BADGE_BLUR_LEVEL = "badge_blur_level"
 
     // Labels
     const val HIDE_LABELS = "hide_icon_labels"
@@ -47,6 +48,8 @@ object Prefs {
     const val FOLDER_ALPHA = "folder_alpha"
     const val FOLDER_STROKE = "folder_stroke_dp"
     const val FOLDER_COLUMNS = "folder_columns"
+    const val FOLDER_BLUR = "folder_blur"
+    const val FOLDER_BLUR_RADIUS = "folder_blur_radius"
 
     // Widgets
     const val CLOCK = "enable_themed_clock"
@@ -106,6 +109,7 @@ object Prefs {
         ICON_NORMALIZE_SIZE to 90,
         HIDE_SHADOWS to false,
         BADGE_BLUR to false,
+        BADGE_BLUR_LEVEL to 60,
         HIDE_LABELS to false,
         HIDE_DOCK_LABELS to false,
         LABEL_SIZE to 0,
@@ -126,6 +130,8 @@ object Prefs {
         FOLDER_ALPHA to 75,
         FOLDER_STROKE to 1,
         FOLDER_COLUMNS to 0,
+        FOLDER_BLUR to false,
+        FOLDER_BLUR_RADIUS to 60,
         CLOCK to false,
         CLOCK_COLOR to 0,
         RECENTS_RADIUS to 0,

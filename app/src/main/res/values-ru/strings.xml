@@ -86,6 +86,9 @@
     <string name="menu_show_shortcuts">Показать ярлыки рабочего стола</string>
     <string name="pref_badge_blur">Матовые значки уведомлений</string>
     <string name="pref_badge_blur_summary">Значки становятся полупрозрачными и размывают иконку под собой</string>
+    <string name="pref_badge_blur_level">Степень размытия значка</string>
+    <string name="pref_folder_blur">Размытие открытых папок</string>
+    <string name="pref_folder_blur_summary">Размывает то, что находится за панелью папки</string>
     <string name="toast_no_other_packs">Установите ещё один набор значков</string>
     <string name="action_save">Сохранить</string>
     <string name="pref_icon_scale">Размер значков</string>

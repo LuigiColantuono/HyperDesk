@@ -94,6 +94,7 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
             returnConstant(cl, deviceConfigs, "getHotseatMaxCount", 99)
         }
         if (bool(Prefs.FOLDER)) safeHook("folderStyle") { folderStyleHook(cl) }
+        if (bool(Prefs.FOLDER_BLUR)) safeHook("folderBlur") { folderBlurHook(cl) }
         if (int(Prefs.FOLDER_COLUMNS) > 0) folderColumnsHooks(cl)
 
         // Widgets
@@ -139,14 +140,15 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
         safeHook("wallpaperColor") { wallpaperColorChangedHook(cl) }
     }
 
+    private companion object {
+        /** The badge area is sampled at this multiple of its size. */
+        const val BADGE_SAMPLE_AREA = 3
+        const val MAX_VIEW_BLUR_RADIUS = 400
+    }
+
     private fun ctx(view: View? = null): Context? = context ?: view?.context
 
     private fun dp(value: Int, c: Context) = value * c.resources.displayMetrics.density
-
-    private companion object {
-        const val BADGE_FILL_ALPHA = 150
-        const val BADGE_BLUR_FACTOR = 6
-    }
 
     // ---------------------------------------------------------------- context & reload
 
@@ -416,15 +418,18 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
     /**
      * Frosted glass for notification badges. Window blur can't do this: it only reaches what
      * is behind the launcher window, so it would blur the wallpaper and never the icon under
-     * the badge. Instead the icon is captured, softened by downscaling, and drawn under a
-     * translucent badge. Whatever fails, the badge is still drawn.
+     * the badge. MIUI's view blur doesn't fit either, since a badge is drawn on the icon's
+     * canvas and isn't a view. Instead the area around the badge is captured, softened by
+     * downscaling, and drawn under a translucent badge. Whatever fails, the badge is still drawn.
      */
     private fun badgeBlurHooks(cl: ClassLoader) {
         val render = findClassAny(cl, "com.miui.home.launcher.IconMessageRender")
         val params = findClassAny(cl, "com.miui.home.launcher.IconMessageRender\$DrawParams")
 
         hook(findMethodByName(params, "createMessageBitmap", 1)) { chain ->
-            (XposedHelpers.getObjectField(chain.thisObject, "mCirclePaint") as? Paint)?.alpha = BADGE_FILL_ALPHA
+            // A stronger blur needs a clearer tint, or the red hides it.
+            (XposedHelpers.getObjectField(chain.thisObject, "mCirclePaint") as? Paint)?.alpha =
+                190 - int(Prefs.BADGE_BLUR_LEVEL) * 130 / 100
             chain.proceed()
         }
 
@@ -475,10 +480,15 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
     private fun buildFrost(host: View, params: Any, message: Bitmap, x: Float, y: Float): Bitmap? = try {
         val width = message.width
         val height = message.height
-        val small = createBitmap((width / BADGE_BLUR_FACTOR).coerceAtLeast(1), (height / BADGE_BLUR_FACTOR).coerceAtLeast(1))
+        // Sampling beyond the badge lets colours from around it bleed in, as a real blur does.
+        val factor = 4 + int(Prefs.BADGE_BLUR_LEVEL) * 12 / 100
+        val small = createBitmap(
+            (width * BADGE_SAMPLE_AREA / factor).coerceAtLeast(1),
+            (height * BADGE_SAMPLE_AREA / factor).coerceAtLeast(1)
+        )
         val capture = Canvas(small)
-        capture.scale(small.width.toFloat() / width, small.height.toFloat() / height)
-        capture.translate(width / 2f - x, height / 2f - y)
+        capture.scale(small.width.toFloat() / (width * BADGE_SAMPLE_AREA), small.height.toFloat() / (height * BADGE_SAMPLE_AREA))
+        capture.translate(width * BADGE_SAMPLE_AREA / 2f - x, height * BADGE_SAMPLE_AREA / 2f - y)
         capturingIcon = true
         try {
             host.draw(capture)
@@ -488,7 +498,13 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
         val frost = createBitmap(width, height)
         val canvas = Canvas(frost)
         (findMethodByName(params.javaClass, "createCirclePatch", 0).invoke(params) as? Path)?.let(canvas::clipPath)
-        canvas.drawBitmap(small, null, RectF(0f, 0f, width.toFloat(), height.toFloat()), Paint(Paint.FILTER_BITMAP_FLAG))
+        val margin = (BADGE_SAMPLE_AREA - 1) / 2f
+        canvas.drawBitmap(
+            small,
+            null,
+            RectF(-width * margin, -height * margin, width * (1 + margin), height * (1 + margin)),
+            Paint(Paint.FILTER_BITMAP_FLAG)
+        )
         frost
     } catch (t: Throwable) {
         warn("buildFrost: $t")
@@ -582,6 +598,59 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
                     strokePx = dp(int(Prefs.FOLDER_STROKE), c).toInt(),
                 )
             )
+        }
+    }
+
+    /**
+     * Two layers. Window blur reaches the wallpaper and works wherever the system allows it.
+     * MIUI's view blur also reaches what the launcher itself drew behind the panel, the home
+     * icons, but HyperOS turns it off on lower-end devices. Lifting that switch only here
+     * keeps the rest of the launcher, and every other app, on its usual path.
+     */
+    private fun folderBlurHook(cl: ClassLoader) {
+        val viewBlur = try {
+            val root = XposedHelpers.findClass("android.view.ViewRootImpl", cl)
+            XposedHelpers.setStaticBooleanField(root, "mSupportedMiBlur", true)
+            true
+        } catch (t: Throwable) {
+            warn("folderBlur: view blur unavailable: $t")
+            false
+        }
+        val folder = findClassAny(cl, "com.miui.home.launcher.Folder")
+        after(XposedHelpers.findMethodExact(folder, "onFinishInflate")) { chain, result ->
+            val panel = XposedHelpers.getObjectField(chain.thisObject, "mBackgroundView") as? View
+            if (panel != null) blurFolderPanel(panel, viewBlur)
+            result
+        }
+    }
+
+    private fun blurFolderPanel(panel: View, viewBlur: Boolean) {
+        val c = ctx(panel) ?: return
+        val radius = dp(int(Prefs.FOLDER_BLUR_RADIUS), c).toInt()
+        Materials.apply(
+            panel,
+            c,
+            Materials.Spec(
+                style = "frosted",
+                color = Constants.resolveColor(c, int(Prefs.FOLDER_COLOR)),
+                alphaPercent = int(Prefs.FOLDER_ALPHA),
+                cornerPx = dp(int(Prefs.FOLDER_RADIUS), c),
+                strokePx = dp(int(Prefs.FOLDER_STROKE), c).toInt(),
+                blurRadius = radius,
+            )
+        )
+        if (!viewBlur) return
+        try {
+            // Same sequence as the launcher's own FolderClingBlurController.
+            val view = View::class.java
+            val intArg = Int::class.javaPrimitiveType
+            view.getMethod("setMiBackgroundBlurMode", intArg).invoke(panel, 1)
+            view.getMethod("setPassWindowBlurEnabled", Boolean::class.javaPrimitiveType).invoke(panel, true)
+            view.getMethod("setMiBackgroundBlurRadius", intArg).invoke(panel, radius.coerceAtMost(MAX_VIEW_BLUR_RADIUS))
+            view.getMethod("setMiViewBlurMode", intArg).invoke(panel, 1)
+            info("folderBlur: view blur applied, radius $radius")
+        } catch (t: Throwable) {
+            warn("folderBlur: $t")
         }
     }
 
