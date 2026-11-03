@@ -1,27 +1,36 @@
-# IconsCustomizer 🎨
+# HyperDesk 
 
 ![Android Version](https://img.shields.io/badge/Android-12%2B-3DDC84?logo=android&logoColor=white)
 ![LSPosed Framework](https://img.shields.io/badge/LSPosed-Required-blue)
 ![HyperOS](https://img.shields.io/badge/HyperOS-Supported-orange)
 ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
-An advanced Xposed/LSPosed module designed to bring ultimate icon customization to the HyperOS Launcher. Break free from default icons and apply any custom third-party icon pack directly to your system launcher.
+An advanced Xposed/Vector module designed to bring ultimate icon customization to the HyperOS Launcher. Break free from default icons and apply any custom third-party icon pack directly to your system launcher.
 
 > **⚠️ Developer Note:**
-> I originally created this project for my own personal use. Please do not expect immediate updates or quick bug fixes! If you run into issues, feel free to report them on [GitHub Issues](../../issues) or on my Reddit post, and I will try my best to fix them whenever I have free time.
+> Developer Notes: I was tinkering with my Redmi Note 12 Topaz (a piece of junk) and wanted to create something that would allow me to customize my device without using Nova.
+> I came across this interesting project—originally by ukmcoder, and forked by egorovsankin988-create.
+> I modified the hooks to make it compatible with HyperOS 2. Added icon pack mixing, Added the ability to customize system icons, Refined the notification badges, Plus other minor improvements.
 
 ## 📸 Screenshots
 
 <p align="center">
-  <b>HyperOS with Custom Icon Packs</b><br>
-  <img src="imgs/screenshots1.jpg" width="600" alt="HyperOS Launcher showing different custom icon packs applied" />
+  <b>HyperOS with Custom Icon Packs</b>
+  <br><br>
+  <img width="auto" height="600" alt="image" src="https://github.com/user-attachments/assets/d5e4b912-fced-4dc9-be8a-a7644807909b" />
+  <img width="auto" height="600" alt="image" src="https://github.com/user-attachments/assets/7eda9262-90bc-4238-8ad2-10a4625ef273" />
 </p>
 
 <br>
 
 <p align="center">
-  <b>IconsCustomizer Module Interface</b><br>
-  <img src="imgs/screenshots2.jpg" width="300" alt="IconsCustomizer Module Settings UI" />
+  <b>Module Interface</b>
+  <br><br>
+  <img width="auto" height="600" alt="image" src="https://github.com/user-attachments/assets/1871b5ff-173a-4215-aa51-11a8714af0e5" />
+  <img width="auto" height="600" alt="image" src="https://github.com/user-attachments/assets/d43a2968-022d-4f89-96dd-adfc5f3a5051" />
+  <br>
+  <img width="auto" height="600" alt="image" src="https://github.com/user-attachments/assets/c8bdf9ce-3461-40e9-b9ba-77f37c1bbe42" />
+  <img width="auto" height="600" alt="image" src="https://github.com/user-attachments/assets/28f96d75-019e-48e8-a3b1-0212ad88635d" /> 
 </p>
 
 ## ✨ HyperDesk 2.0
@@ -55,22 +64,22 @@ Every category has a **live preview**, changes are collected and applied with on
 
 Before installing, ensure your device meets the following requirements:
 1. **Root Access:** Magisk or KernelSU installed.
-2. **Xposed Framework:** LSPosed (Zygisk or Riru version) installed and active.
-3. **OS:** HyperOS 3.0 or newer (Android 15+) on Xiaomi, Redmi and POCO devices. Supports both the HyperOS System Launcher (`com.miui.home`) and the POCO Launcher (`com.mi.android.globallauncher`). Originally tested on Poco F7 (HyperOS 3.0/3.1 China launcher).
+2. **Xposed Framework:** Vector (Zygisk-Next or ReZygisk) installed and active.
+3. **OS:** HyperOS 2.0 or newer (Android 15+) on Xiaomi, Redmi and POCO devices. Supports both the HyperOS System Launcher (`com.miui.home`) and the POCO Launcher (`com.mi.android.globallauncher`). Originally tested on Poco F7 (HyperOS 3.0/3.1 China launcher).
 4. Apply Default Icons From HyperOS Themes App For Best Results.
 
 ## 🚀 Installation
 
 1. Download the latest `.apk` from the [Releases](../../releases) page.
 2. Install the APK on your device.
-3. Open the **LSPosed Manager** app.
-4. Go to the **Modules** tab and enable **IconsCustomizer**.
+3. Open the **Vector**.
+4. Go to the **Modules** tab and enable **HyperDesk**.
 5. Ensure your launcher is checked in the scope list: **System Launcher** (`com.miui.home`) and/or **POCO Launcher** (`com.mi.android.globallauncher`). The app's status card shows which launcher your device uses.
 6. **Force Stop Launcher App Or Reboot your device** to apply the hooks.
 
 ## 🛠️ How to Use
 
-1. Open the **IconsCustomizer** app from your app drawer.
+1. Open the **HyperDesk** app from your app drawer.
 2. Enable the **Allow Custom Icon Packs** option.
 3. Select your desired installed icon pack from the list.
 4. If some apps have missing icons in the icon pack, use the **"Apply Custom Icon to Specific Apps"** option and choose an identical icon from the icon pack for that app.
