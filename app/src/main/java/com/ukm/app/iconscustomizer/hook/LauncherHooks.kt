@@ -583,23 +583,34 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
      */
     private fun folderStyleHook(cl: ClassLoader) {
         val cls = findClassAny(cl, "com.miui.home.model.core.IconCache", "com.miui.home.launcher.IconCache")
-        val ids = setOf(4097, 4098, 4099, 4100, 4104)
-        hook(XposedHelpers.findMethodExact(cls, "getDrawable", Int::class.java)) { chain ->
-            val id = chain.args[0] as? Int
-            val c = context
-            if (c == null || id !in ids) return@hook chain.proceed()
-            Materials.build(
-                c,
-                Materials.Spec(
-                    style = string(Prefs.FOLDER_STYLE).let { if (it == "frosted") "glass" else it },
-                    color = Constants.resolveColor(c, int(Prefs.FOLDER_COLOR)),
-                    alphaPercent = int(Prefs.FOLDER_ALPHA),
-                    cornerPx = dp(int(Prefs.FOLDER_RADIUS), c),
-                    strokePx = dp(int(Prefs.FOLDER_STROKE), c).toInt(),
-                )
-            )
+        val byId = XposedHelpers.findMethodExactIfExists(cls, "getDrawable", Int::class.java)
+        if (byId != null) {
+            val ids = setOf(4097, 4098, 4099, 4100, 4104)
+            hook(byId) { chain ->
+                val c = context
+                if (c == null || chain.args[0] as? Int !in ids) chain.proceed() else folderMaterial(c)
+            }
+            return
+        }
+        // HyperOS 2 has no id lookup: each folder icon background has its own getter.
+        val getters = listOf("getFolderIcon", "getFolderIconLight", "getFolderBgGridFourIcon", "getFolderBgGridFourLight")
+            .mapNotNull { XposedHelpers.findMethodExactIfExists(cls, it) }
+        if (getters.isEmpty()) throw NoSuchMethodException("${cls.name} folder icon getters")
+        for (getter in getters) {
+            hook(getter) { chain -> context?.let(::folderMaterial) ?: chain.proceed() }
         }
     }
+
+    private fun folderMaterial(c: Context) = Materials.build(
+        c,
+        Materials.Spec(
+            style = string(Prefs.FOLDER_STYLE).let { if (it == "frosted") "glass" else it },
+            color = Constants.resolveColor(c, int(Prefs.FOLDER_COLOR)),
+            alphaPercent = int(Prefs.FOLDER_ALPHA),
+            cornerPx = dp(int(Prefs.FOLDER_RADIUS), c),
+            strokePx = dp(int(Prefs.FOLDER_STROKE), c).toInt(),
+        )
+    )
 
     /**
      * The opened folder's panel. The folder style hook above only covers the closed folder
@@ -620,11 +631,22 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
         safeHook("folderPanelTint") {
             hook(XposedHelpers.findMethodExact(folder, "onWallpaperColorChanged")) { chain ->
                 val self = chain.thisObject
-                val panel = panelOf(self)
-                panel?.background?.let { XposedHelpers.setObjectField(self!!, "mContentBackground", it) }
-                chain.proceed().also { panel?.background?.colorFilter = null }
+                val background = panelOf(self)?.background
+                if (self != null && background != null) handToLauncher(self, background)
+                chain.proceed().also { if (isTintable(background)) background?.colorFilter = null }
             }
         }
+    }
+
+    /**
+     * Window blur's drawable throws on setColorFilter, which the launcher calls on this field,
+     * so it stays out: the launcher keeps tinting its own hidden drawable instead.
+     */
+    private fun isTintable(drawable: Drawable?) =
+        drawable != null && !drawable.javaClass.name.endsWith("BackgroundBlurDrawable")
+
+    private fun handToLauncher(folder: Any, drawable: Drawable) {
+        if (isTintable(drawable)) XposedHelpers.setObjectField(folder, "mContentBackground", drawable)
     }
 
     private fun stylePanel(folder: Any, panel: View, viewBlur: Boolean) {
@@ -645,11 +667,11 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
         )
         // The launcher shows and hides the panel through this field, and window blur only
         // replaces the background once the panel is attached, so keep the field current.
-        XposedHelpers.setObjectField(folder, "mContentBackground", panel.background)
+        panel.background?.let { handToLauncher(folder, it) }
         panel.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
             override fun onViewAttachedToWindow(v: View) {
                 v.removeOnAttachStateChangeListener(this)
-                v.background?.let { XposedHelpers.setObjectField(folder, "mContentBackground", it) }
+                v.background?.let { handToLauncher(folder, it) }
             }
 
             override fun onViewDetachedFromWindow(v: View) {}
