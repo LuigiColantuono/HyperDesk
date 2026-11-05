@@ -38,6 +38,7 @@ class SystemUiHooks(module: XposedModule, prefs: SharedPreferences?) :
     fun install(cl: ClassLoader) {
         val anything = ccTile + ccCard + ccSlider + volPanel + volSlider > 0 || volBlur || ccBackground < 100
         if (!anything) return
+        if (ccBackground < 100) safeHook("ccSolidBackground") { solidBackgroundHook(cl) }
         safeHook("dimenOverrides") { resourceHooks() }
         safeHook("pluginLoader") {
             val factory = findClassAny(cl, "com.android.systemui.shared.plugins.PluginInstance\$PluginFactory")
@@ -48,6 +49,26 @@ class SystemUiHooks(module: XposedModule, prefs: SharedPreferences?) :
                     installPluginHooks(ctx)
                 }
                 result
+            }
+        }
+    }
+
+    /**
+     * Where window blur isn't available, SystemUI paints a solid colour behind the control
+     * center instead, at the colour's alpha times the blur ratio. Only that alpha is scaled,
+     * so nothing that reads the ratio itself changes.
+     */
+    private fun solidBackgroundHook(cl: ClassLoader) {
+        val cls = findClassAny(cl, "com.miui.systemui.shade.blur.ShadeSolidBackgroundController")
+        val factor = ccBackground / 100f
+        hook(XposedHelpers.findMethodExact(cls, "updateCtrl\$1")) { chain ->
+            val self = chain.thisObject!!
+            val alpha = XposedHelpers.getIntField(self, "solidAlpha")
+            XposedHelpers.setIntField(self, "solidAlpha", (alpha * factor).toInt())
+            try {
+                chain.proceed()
+            } finally {
+                XposedHelpers.setIntField(self, "solidAlpha", alpha)
             }
         }
     }
