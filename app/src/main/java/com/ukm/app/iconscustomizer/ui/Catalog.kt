@@ -128,6 +128,7 @@ object Catalog {
             ),
             Section(
                 R.string.sec_layout, listOf(
+                    SliderItem(Prefs.FOLDER_WIDTH, R.string.pref_folder_width, R.drawable.ic_width, 70, 100, Scope.LAUNCHER, unit = "%", summary = R.string.pref_folder_width_summary),
                     SliderItem(Prefs.FOLDER_COLUMNS, R.string.pref_folder_columns, R.drawable.ic_columns, 0, 6, Scope.LAUNCHER, zeroLabel = R.string.label_system, beta = true),
                 )
             ),
@@ -214,6 +215,7 @@ object Catalog {
                     PreviewItem(PreviewKind.CONTROL_CENTER),
                     SliderItem(Prefs.CC_TILE_RADIUS, R.string.pref_cc_tile_radius, R.drawable.ic_apps, 0, 40, Scope.SYSTEMUI, unit = " dp", zeroLabel = R.string.label_system, beta = true),
                     SliderItem(Prefs.CC_CARD_RADIUS, R.string.pref_cc_card_radius, R.drawable.ic_widgets, 0, 40, Scope.SYSTEMUI, unit = " dp", zeroLabel = R.string.label_system, beta = true),
+                    SliderItem(Prefs.CC_BACKGROUND, R.string.pref_cc_background, R.drawable.ic_opacity, 10, 100, Scope.SYSTEMUI, unit = "%", summary = R.string.pref_cc_background_summary, beta = true),
                     SliderItem(Prefs.CC_SLIDER_RADIUS, R.string.pref_cc_slider_radius, R.drawable.ic_tune, 0, 40, Scope.SYSTEMUI, unit = " dp", zeroLabel = R.string.label_system, beta = true),
                 )
             ),

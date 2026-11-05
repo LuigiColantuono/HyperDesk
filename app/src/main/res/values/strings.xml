@@ -116,6 +116,8 @@
     <string name="pref_folder_style">Custom folders</string>
     <string name="pref_folder_style_summary">Restyle folder icons and the opened folder</string>
     <string name="pref_folder_columns">Folder columns</string>
+    <string name="pref_folder_width">Opened folder width</string>
+    <string name="pref_folder_width_summary">Never narrower than the icons inside</string>
     <string name="pref_clock">Monet clock widget</string>
     <string name="pref_clock_summary">Color clock widgets with your accent</string>
     <string name="pref_clock_color">Clock color</string>
@@ -148,6 +150,8 @@
     <string name="pref_cc_tile_radius">Toggle tiles</string>
     <string name="pref_cc_card_radius">Large cards</string>
     <string name="pref_cc_slider_radius">Brightness &amp; volume sliders</string>
+    <string name="pref_cc_background">Background opacity</string>
+    <string name="pref_cc_background_summary">Blur and dimming behind the control center. 100% is the system look</string>
     <string name="pref_volume_panel_radius">Panel corners</string>
     <string name="pref_volume_slider_radius">Slider corners</string>
     <string name="pref_volume_blur">Panel blur</string>

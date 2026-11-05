@@ -116,6 +116,8 @@
     <string name="pref_folder_style">Свои папки</string>
     <string name="pref_folder_style_summary">Новый стиль значков папок и открытой папки</string>
     <string name="pref_folder_columns">Колонки в папке</string>
+    <string name="pref_folder_width">Ширина открытой папки</string>
+    <string name="pref_folder_width_summary">Не уже, чем значки внутри</string>
     <string name="pref_clock">Часы в цветах Monet</string>
     <string name="pref_clock_summary">Окрасить виджеты часов в акцентный цвет</string>
     <string name="pref_clock_color">Цвет часов</string>
@@ -148,6 +150,8 @@
     <string name="pref_cc_tile_radius">Плитки переключателей</string>
     <string name="pref_cc_card_radius">Большие карточки</string>
     <string name="pref_cc_slider_radius">Ползунки яркости и громкости</string>
+    <string name="pref_cc_background">Непрозрачность фона</string>
+    <string name="pref_cc_background_summary">Размытие и затемнение за пунктом управления. 100% — как в системе</string>
     <string name="pref_volume_panel_radius">Углы панели</string>
     <string name="pref_volume_slider_radius">Углы ползунка</string>
     <string name="pref_volume_blur">Размытие панели</string>

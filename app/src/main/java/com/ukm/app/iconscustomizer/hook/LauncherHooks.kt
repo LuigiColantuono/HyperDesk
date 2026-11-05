@@ -94,7 +94,9 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
             returnConstant(cl, deviceConfigs, "getHotseatMaxCount", 99)
         }
         if (bool(Prefs.FOLDER)) safeHook("folderStyle") { folderStyleHook(cl) }
-        if (bool(Prefs.FOLDER) || bool(Prefs.FOLDER_BLUR)) safeHook("folderPanel") { folderPanelHook(cl) }
+        if (bool(Prefs.FOLDER) || bool(Prefs.FOLDER_BLUR) || int(Prefs.FOLDER_WIDTH) < 100) {
+            safeHook("folderPanel") { folderPanelHook(cl) }
+        }
         if (int(Prefs.FOLDER_COLUMNS) > 0) folderColumnsHooks(cl)
 
         // Widgets
@@ -144,6 +146,7 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
         /** The badge area is sampled at this multiple of its size. */
         const val BADGE_SAMPLE_AREA = 3
         const val MAX_VIEW_BLUR_RADIUS = 400
+        const val FOLDER_CONTENT_INSET_DP = 16
     }
 
     private fun ctx(view: View? = null): Context? = context ?: view?.context
@@ -621,9 +624,13 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
         val folder = findClassAny(cl, "com.miui.home.launcher.Folder")
         fun panelOf(f: Any?) = f?.let { XposedHelpers.getObjectField(it, "mBackgroundView") as? View }
 
+        val styled = bool(Prefs.FOLDER) || bool(Prefs.FOLDER_BLUR)
         after(XposedHelpers.findMethodExact(folder, "onFinishInflate")) { chain, result ->
             val self = chain.thisObject
-            panelOf(self)?.let { stylePanel(self!!, it, viewBlur) }
+            panelOf(self)?.let { panel ->
+                if (styled) stylePanel(self!!, panel, viewBlur)
+                if (int(Prefs.FOLDER_WIDTH) < 100) limitPanelWidth(self!!, panel)
+            }
             result
         }
         // On every wallpaper change the launcher tints this drawable plain white or black,
@@ -635,6 +642,31 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
                 if (self != null && background != null) handToLauncher(self, background)
                 chain.proceed().also { if (isTintable(background)) background?.colorFilter = null }
             }
+        }
+    }
+
+    /**
+     * The panel is only the folder's background: the title and grid are its siblings, sized
+     * by the grid. Narrowing it with equal side margins therefore moves nothing else, as long
+     * as it never gets narrower than the grid itself.
+     */
+    private fun limitPanelWidth(folder: Any, panel: View) {
+        val percent = int(Prefs.FOLDER_WIDTH)
+        panel.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
+            val total = (view.parent as? View)?.width ?: return@addOnLayoutChangeListener
+            if (total == 0) return@addOnLayoutChangeListener
+            val content = (XposedHelpers.getObjectField(folder, "mHeader") as? View)?.width ?: 0
+            val inset = dp(FOLDER_CONTENT_INSET_DP, view.context).toInt()
+            val width = maxOf(total * percent / 100, content + 2 * inset).coerceAtMost(total)
+            val side = (total - width) / 2
+            val lp = view.layoutParams as? ViewGroup.MarginLayoutParams ?: return@addOnLayoutChangeListener
+            if (lp.marginStart == side && lp.marginEnd == side) return@addOnLayoutChangeListener
+            lp.marginStart = side
+            lp.marginEnd = side
+            lp.leftMargin = side
+            lp.rightMargin = side
+            // Not during the layout pass that called us.
+            view.post { view.layoutParams = lp }
         }
     }
 

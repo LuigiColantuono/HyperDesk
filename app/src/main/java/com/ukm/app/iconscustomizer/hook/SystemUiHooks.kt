@@ -29,13 +29,14 @@ class SystemUiHooks(module: XposedModule, prefs: SharedPreferences?) :
     private val volPanel = int(Prefs.VOL_PANEL_RADIUS)
     private val volSlider = int(Prefs.VOL_SLIDER_RADIUS)
     private val volBlur = bool(Prefs.VOL_BLUR)
+    private val ccBackground = int(Prefs.CC_BACKGROUND)
 
     /** Resource id -> replacement size in px, filled when the plugin loads. */
     private val dimenOverrides = ConcurrentHashMap<Int, Float>()
     @Volatile private var pluginHooked = false
 
     fun install(cl: ClassLoader) {
-        val anything = ccTile + ccCard + ccSlider + volPanel + volSlider > 0 || volBlur
+        val anything = ccTile + ccCard + ccSlider + volPanel + volSlider > 0 || volBlur || ccBackground < 100
         if (!anything) return
         safeHook("dimenOverrides") { resourceHooks() }
         safeHook("pluginLoader") {
@@ -112,6 +113,13 @@ class SystemUiHooks(module: XposedModule, prefs: SharedPreferences?) :
             val cls = findClassAny(cl, "miui.systemui.controlcenter.qs.tileview.QSCardItemView")
             val radius = px(ctx, ccCard)
             replaceFirstArg(findMethodLoose(cls, "setCornerRadius", Float::class.java)) { radius }
+        }
+        // The blur ratio drives both the blur and the dimming behind the control center, so
+        // scaling it makes the background see-through. 0 stays 0, so closing is unaffected.
+        if (ccBackground < 100) safeHook("ccBackground") {
+            val cls = findClassAny(cl, "miui.systemui.controlcenter.windowview.ControlCenterWindowViewController")
+            val factor = ccBackground / 100f
+            replaceFirstArg(findMethodLoose(cls, "setBlurRatio", Float::class.java)) { (it as? Float)?.times(factor) ?: it }
         }
         if (ccSlider > 0) safeHook("ccSlider") {
             val cls = findClassAny(cl, "miui.systemui.controlcenter.panel.main.recyclerview.ToggleSliderViewHolder")

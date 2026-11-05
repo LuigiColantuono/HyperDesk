@@ -50,6 +50,7 @@ object Prefs {
     const val FOLDER_COLUMNS = "folder_columns"
     const val FOLDER_BLUR = "folder_blur"
     const val FOLDER_BLUR_RADIUS = "folder_blur_radius"
+    const val FOLDER_WIDTH = "folder_width"
 
     // Widgets
     const val CLOCK = "enable_themed_clock"
@@ -75,6 +76,7 @@ object Prefs {
     const val CC_TILE_RADIUS = "cc_tile_radius_dp"
     const val CC_CARD_RADIUS = "cc_card_radius_dp"
     const val CC_SLIDER_RADIUS = "cc_slider_radius_dp"
+    const val CC_BACKGROUND = "cc_background_opacity"
 
     // Volume panel
     const val VOL_PANEL_RADIUS = "volume_panel_radius_dp"
@@ -132,6 +134,7 @@ object Prefs {
         FOLDER_COLUMNS to 0,
         FOLDER_BLUR to false,
         FOLDER_BLUR_RADIUS to 60,
+        FOLDER_WIDTH to 100,
         CLOCK to false,
         CLOCK_COLOR to 0,
         RECENTS_RADIUS to 0,
@@ -149,6 +152,7 @@ object Prefs {
         CC_TILE_RADIUS to 0,
         CC_CARD_RADIUS to 0,
         CC_SLIDER_RADIUS to 0,
+        CC_BACKGROUND to 100,
         VOL_PANEL_RADIUS to 0,
         VOL_SLIDER_RADIUS to 0,
         VOL_BLUR to false,
