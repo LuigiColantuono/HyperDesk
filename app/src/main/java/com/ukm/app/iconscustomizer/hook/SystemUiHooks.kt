@@ -116,8 +116,13 @@ class SystemUiHooks(module: XposedModule, prefs: SharedPreferences?) :
         if (ccSlider > 0) safeHook("ccSlider") {
             val cls = findClassAny(cl, "miui.systemui.controlcenter.panel.main.recyclerview.ToggleSliderViewHolder")
             val radius = px(ctx, ccSlider)
+            // The outline is the slider's outer shape. progressRadius alone only rounds the
+            // level fill inside it, which is what users saw changing.
+            val setters = listOf("setOutlineRadius", "setProgressRadius")
+                .mapNotNull { XposedHelpers.findMethodExactIfExists(cls, it, Float::class.java) }
+            if (setters.isEmpty()) throw NoSuchMethodException("${cls.name}#setOutlineRadius")
             after(findMethodByName(cls, "updateSize")) { chain, result ->
-                chain.thisObject?.let { setFieldNumber(it, "progressRadius", radius) }
+                chain.thisObject?.let { holder -> setters.forEach { it.invoke(holder, radius) } }
                 result
             }
         }

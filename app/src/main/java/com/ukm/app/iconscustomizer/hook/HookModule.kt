@@ -65,8 +65,47 @@ abstract class HookModule(
         throw NoSuchMethodException("${clazz.name}#$name/$arity")
     }
 
+    /**
+     * A bug in a hook must never take its process down: a crashing SystemUI restarts in a loop
+     * until LSPosed disables every module. So a hook that throws is logged once and the
+     * original method runs as if the hook weren't there. Exceptions thrown by the original
+     * method itself still reach the caller unchanged.
+     */
     protected fun hook(method: Executable, block: (XposedInterface.Chain) -> Any?) {
-        module.hook(method).intercept { chain -> block(chain) }
+        module.hook(method).intercept { chain ->
+            val guarded = GuardedChain(chain)
+            try {
+                block(guarded)
+            } catch (t: Throwable) {
+                if (t === guarded.error) throw t
+                if (failedHooks.add(method)) warn("Hook on ${method.declaringClass.name}#${method.name} failed, skipping it: $t")
+                if (guarded.proceeded) guarded.result else chain.proceed()
+            }
+        }
+    }
+
+    private val failedHooks = java.util.concurrent.ConcurrentHashMap.newKeySet<Executable>()
+
+    /** Remembers whether, and how, the original method ran. */
+    private class GuardedChain(private val chain: XposedInterface.Chain) : XposedInterface.Chain by chain {
+        var proceeded = false
+        var result: Any? = null
+        var error: Throwable? = null
+
+        private inline fun track(call: () -> Any?): Any? {
+            proceeded = true
+            try {
+                return call().also { result = it }
+            } catch (t: Throwable) {
+                error = t
+                throw t
+            }
+        }
+
+        override fun proceed(): Any? = track { chain.proceed() }
+        override fun proceed(args: Array<Any?>): Any? = track { chain.proceed(args) }
+        override fun proceedWith(thisObject: Any): Any? = track { chain.proceedWith(thisObject) }
+        override fun proceedWith(thisObject: Any, args: Array<Any?>): Any? = track { chain.proceedWith(thisObject, args) }
     }
 
     /** Runs the original, then [block] with the result; [block]'s return value is used. */

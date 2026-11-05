@@ -20,10 +20,24 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // CI signs releases with a fixed key from repository secrets, so a new version installs
+    // over the old one. Without the key (local builds) the debug key is used.
+    val releaseKeystore = System.getenv("HYPERDESK_KEYSTORE")
+    signingConfigs {
+        create("release") {
+            if (releaseKeystore != null) {
+                storeFile = file(releaseKeystore)
+                storePassword = System.getenv("HYPERDESK_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("HYPERDESK_KEY_ALIAS")
+                keyPassword = System.getenv("HYPERDESK_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (releaseKeystore != null) "release" else "debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

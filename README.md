@@ -70,8 +70,8 @@ Before installing, ensure your device meets the following requirements:
 
 ## 🚀 Installation
 
-1. Download the latest `.apk` from the [Releases](../../releases) page.
-2. Install the APK on your device.
+1. Download `HyperDesk.apk` from the latest [release](../../releases/latest). The "Development build" is for testing only.
+2. Install the APK like any app. It is an LSPosed module, not a Magisk or KernelSU module: do not flash it.
 3. Open the **Vector**.
 4. Go to the **Modules** tab and enable **HyperDesk**.
 5. Ensure your launcher is checked in the scope list: **System Launcher** (`com.miui.home`) and/or **POCO Launcher** (`com.mi.android.globallauncher`). The app's status card shows which launcher your device uses.

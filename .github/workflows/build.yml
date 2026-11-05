@@ -2,12 +2,29 @@ name: Build APK
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Also attach HyperDesk.apk to this existing release (for example v2.0)
+        required: false
   push:
     branches: [ main, master ]
+    tags: [ 'v*' ]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      KEYSTORE_BASE64: ${{ secrets.HYPERDESK_KEYSTORE_BASE64 }}
+      HYPERDESK_KEYSTORE_PASSWORD: ${{ secrets.HYPERDESK_KEYSTORE_PASSWORD }}
+      HYPERDESK_KEY_ALIAS: ${{ secrets.HYPERDESK_KEY_ALIAS }}
+      HYPERDESK_KEY_PASSWORD: ${{ secrets.HYPERDESK_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
 
@@ -26,6 +43,17 @@ jobs:
           yes | "$SDKM" --licenses > /dev/null || true
           "$SDKM" "platforms;android-36.1" "build-tools;36.0.0" || "$SDKM" "platforms;android-36" "build-tools;36.0.0"
 
+      # Without a fixed key every build gets a new debug key and can't update the previous one.
+      - name: Restore release key
+        if: env.KEYSTORE_BASE64 != ''
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/hyperdesk.jks"
+          echo "HYPERDESK_KEYSTORE=$RUNNER_TEMP/hyperdesk.jks" >> "$GITHUB_ENV"
+
+      - name: Warn about debug signing
+        if: env.KEYSTORE_BASE64 == ''
+        run: echo "::warning::No release key in secrets; the APK is signed with a throwaway debug key."
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
@@ -33,9 +61,28 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew :app:assembleRelease --stacktrace
+          cp app/build/outputs/apk/release/app-release.apk HyperDesk.apk
 
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: HyperDesk-apk
-          path: app/build/outputs/apk/**/*.apk
+      # Releases get the bare APK: a zip is what led people to flash it as a root module.
+      - name: Publish HyperDesk.apk
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_TAG: ${{ inputs.release_tag }}
+          SHA: ${{ github.sha }}
+        run: |
+          if [ "$REF_TYPE" = "tag" ]; then
+            gh release view "$REF_NAME" > /dev/null 2>&1 \
+              || gh release create "$REF_NAME" --title "HyperDesk $REF_NAME" --generate-notes
+            gh release upload "$REF_NAME" HyperDesk.apk --clobber
+          else
+            NOTES="Automatic build of ${SHA::7}, for testing. Install HyperDesk.apk like any app and enable it in LSPosed; do not flash it."
+            gh release view dev > /dev/null 2>&1 \
+              || gh release create dev --prerelease --title "Development build" --notes "$NOTES"
+            gh release upload dev HyperDesk.apk --clobber
+            gh release edit dev --prerelease --notes "$NOTES"
+          fi
+          if [ -n "$INPUT_TAG" ]; then
+            gh release upload "$INPUT_TAG" HyperDesk.apk --clobber
+          fi

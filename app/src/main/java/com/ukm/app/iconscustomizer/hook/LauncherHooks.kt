@@ -94,7 +94,7 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
             returnConstant(cl, deviceConfigs, "getHotseatMaxCount", 99)
         }
         if (bool(Prefs.FOLDER)) safeHook("folderStyle") { folderStyleHook(cl) }
-        if (bool(Prefs.FOLDER_BLUR)) safeHook("folderBlur") { folderBlurHook(cl) }
+        if (bool(Prefs.FOLDER) || bool(Prefs.FOLDER_BLUR)) safeHook("folderPanel") { folderPanelHook(cl) }
         if (int(Prefs.FOLDER_COLUMNS) > 0) folderColumnsHooks(cl)
 
         // Widgets
@@ -602,44 +602,75 @@ class LauncherHooks(module: XposedModule, prefs: SharedPreferences?, pkg: String
     }
 
     /**
-     * Two layers. Window blur reaches the wallpaper and works wherever the system allows it.
-     * MIUI's view blur also reaches what the launcher itself drew behind the panel, the home
-     * icons, but HyperOS turns it off on lower-end devices. Lifting that switch only here
-     * keeps the rest of the launcher, and every other app, on its usual path.
+     * The opened folder's panel. The folder style hook above only covers the closed folder
+     * icon, and only where the launcher still has that method, so the panel needs its own.
      */
-    private fun folderBlurHook(cl: ClassLoader) {
-        val viewBlur = try {
-            val root = XposedHelpers.findClass("android.view.ViewRootImpl", cl)
-            XposedHelpers.setStaticBooleanField(root, "mSupportedMiBlur", true)
-            true
-        } catch (t: Throwable) {
-            warn("folderBlur: view blur unavailable: $t")
-            false
-        }
+    private fun folderPanelHook(cl: ClassLoader) {
+        val viewBlur = bool(Prefs.FOLDER_BLUR) && enableViewBlur()
         val folder = findClassAny(cl, "com.miui.home.launcher.Folder")
+        fun panelOf(f: Any?) = f?.let { XposedHelpers.getObjectField(it, "mBackgroundView") as? View }
+
         after(XposedHelpers.findMethodExact(folder, "onFinishInflate")) { chain, result ->
-            val panel = XposedHelpers.getObjectField(chain.thisObject, "mBackgroundView") as? View
-            if (panel != null) blurFolderPanel(panel, viewBlur)
+            val self = chain.thisObject
+            panelOf(self)?.let { stylePanel(self!!, it, viewBlur) }
             result
+        }
+        // On every wallpaper change the launcher tints this drawable plain white or black,
+        // which is why a chosen colour never showed. Hand it ours, then lift the tint.
+        safeHook("folderPanelTint") {
+            hook(XposedHelpers.findMethodExact(folder, "onWallpaperColorChanged")) { chain ->
+                val self = chain.thisObject
+                val panel = panelOf(self)
+                panel?.background?.let { XposedHelpers.setObjectField(self!!, "mContentBackground", it) }
+                chain.proceed().also { panel?.background?.colorFilter = null }
+            }
         }
     }
 
-    private fun blurFolderPanel(panel: View, viewBlur: Boolean) {
+    private fun stylePanel(folder: Any, panel: View, viewBlur: Boolean) {
         val c = ctx(panel) ?: return
+        val blur = bool(Prefs.FOLDER_BLUR)
         val radius = dp(int(Prefs.FOLDER_BLUR_RADIUS), c).toInt()
         Materials.apply(
             panel,
             c,
             Materials.Spec(
-                style = "frosted",
+                style = if (blur) "frosted" else string(Prefs.FOLDER_STYLE).let { if (it == "frosted") "glass" else it },
                 color = Constants.resolveColor(c, int(Prefs.FOLDER_COLOR)),
                 alphaPercent = int(Prefs.FOLDER_ALPHA),
                 cornerPx = dp(int(Prefs.FOLDER_RADIUS), c),
                 strokePx = dp(int(Prefs.FOLDER_STROKE), c).toInt(),
-                blurRadius = radius,
+                blurRadius = if (blur) radius else 0,
             )
         )
-        if (!viewBlur) return
+        // The launcher shows and hides the panel through this field, and window blur only
+        // replaces the background once the panel is attached, so keep the field current.
+        XposedHelpers.setObjectField(folder, "mContentBackground", panel.background)
+        panel.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {
+                v.removeOnAttachStateChangeListener(this)
+                v.background?.let { XposedHelpers.setObjectField(folder, "mContentBackground", it) }
+            }
+
+            override fun onViewDetachedFromWindow(v: View) {}
+        })
+        if (blur && viewBlur) applyViewBlur(panel, radius)
+    }
+
+    /**
+     * MIUI's view blur also reaches what the launcher drew behind the panel, the home icons,
+     * but HyperOS turns it off on lower-end devices. Lifting that switch only here keeps the
+     * rest of the launcher, and every other app, on its usual path.
+     */
+    private fun enableViewBlur(): Boolean = try {
+        XposedHelpers.setStaticBooleanField(View::class.java.classLoader!!.loadClass("android.view.ViewRootImpl"), "mSupportedMiBlur", true)
+        true
+    } catch (t: Throwable) {
+        warn("folderBlur: view blur unavailable: $t")
+        false
+    }
+
+    private fun applyViewBlur(panel: View, radius: Int) {
         try {
             // Same sequence as the launcher's own FolderClingBlurController.
             val view = View::class.java
