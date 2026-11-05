@@ -37,5 +37,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: IconsCustomizer-apk
+          name: HyperDesk-apk
           path: app/build/outputs/apk/**/*.apk
